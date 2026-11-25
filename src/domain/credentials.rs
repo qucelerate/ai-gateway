@@ -17,12 +17,11 @@ use std::{
 
 use aes_gcm::{
     Aes256Gcm, KeyInit, Nonce,
-    aead::{Aead, AeadCore, Payload},
+    aead::{Aead, Payload},
 };
 use chrono::{DateTime, Utc};
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use zeroize::Zeroizing;
@@ -1138,8 +1137,9 @@ impl CredentialCipher {
         organization_id: OrganizationId,
         secret: Option<&str>,
     ) -> Result<String, CredentialError> {
-        let mut mac = <HmacSha256 as Mac>::new_from_slice(self.active().fingerprint_key.as_ref())
-            .map_err(|_| CredentialError::Encryption)?;
+        let mut mac =
+            <HmacSha256 as KeyInit>::new_from_slice(self.active().fingerprint_key.as_ref())
+                .map_err(|_| CredentialError::Encryption)?;
         mac.update(
             [
                 IDENTITY_PROVIDER_FINGERPRINT_CONTEXT,
@@ -1165,13 +1165,24 @@ impl CredentialCipher {
     }
 
     fn encrypt(&self, aad: &[u8], plaintext: &[u8]) -> Result<SealedCredential, CredentialError> {
+        let nonce = crate::os_random::bytes::<NONCE_BYTES>();
+        self.encrypt_with_nonce(aad, plaintext, nonce)
+    }
+
+    /// `encrypt` under a given nonce; only `encrypt` (a fresh random nonce)
+    /// and the known-answer tests call it.
+    fn encrypt_with_nonce(
+        &self,
+        aad: &[u8],
+        plaintext: &[u8],
+        nonce: [u8; NONCE_BYTES],
+    ) -> Result<SealedCredential, CredentialError> {
         let key = self.active();
         let cipher = Aes256Gcm::new_from_slice(key.encryption_key.as_ref())
             .map_err(|_| CredentialError::Encryption)?;
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let ciphertext = cipher
             .encrypt(
-                &nonce,
+                &Nonce::from(nonce),
                 Payload {
                     msg: plaintext,
                     aad,
@@ -1198,7 +1209,8 @@ impl CredentialCipher {
             .map_err(|_| CredentialError::Decryption)?;
         cipher
             .decrypt(
-                Nonce::from_slice(&ciphertext[..NONCE_BYTES]),
+                &Nonce::try_from(&ciphertext[..NONCE_BYTES])
+                    .map_err(|_| CredentialError::Decryption)?,
                 Payload {
                     msg: &ciphertext[NONCE_BYTES..],
                     aad,
@@ -1248,8 +1260,9 @@ impl CredentialCipher {
         adapter_instance_key: &str,
         input: &ProviderSecretInput,
     ) -> Result<String, CredentialError> {
-        let mut mac = <HmacSha256 as Mac>::new_from_slice(self.active().fingerprint_key.as_ref())
-            .map_err(|_| CredentialError::Encryption)?;
+        let mut mac =
+            <HmacSha256 as KeyInit>::new_from_slice(self.active().fingerprint_key.as_ref())
+                .map_err(|_| CredentialError::Encryption)?;
         mac.update(
             [
                 FINGERPRINT_CONTEXT,
@@ -1793,7 +1806,8 @@ mod tests {
         let body = r#"{"service_account":"g@tenant-project.iam.gserviceaccount.com","project_id":"tenant-project"}"#;
         // The HMAC of the encoding before `location`, computed by hand.
         let mut mac =
-            <HmacSha256 as Mac>::new_from_slice(cipher.active().fingerprint_key.as_ref()).unwrap();
+            <HmacSha256 as KeyInit>::new_from_slice(cipher.active().fingerprint_key.as_ref())
+                .unwrap();
         mac.update(
             [FINGERPRINT_CONTEXT, &org.0.to_string(), "gemini-main"]
                 .join("\0")
@@ -2203,6 +2217,206 @@ mod tests {
         assert_ne!(
             print(&format!("{{{directory}}}")),
             print(r#"{"tenant_id":"8f2c1a4e-0000-4000-8000-00000000000b"}"#)
+        );
+    }
+
+    // Known answers, recorded on the code before the aes-gcm 0.11 / hkdf
+    // 0.13 / hmac 0.13 / sha2 0.11 / rand 0.10 upgrade. They must never
+    // change: every stored ciphertext, key id, and idempotency fingerprint
+    // depends on them.
+    const KAT_KEY: [u8; 32] = [
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+        0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+        0x1e, 0x1f,
+    ];
+    const KAT_NONCE: [u8; NONCE_BYTES] = [0xa5; NONCE_BYTES];
+
+    fn kat_org() -> OrganizationId {
+        OrganizationId(uuid::Uuid::from_u128(
+            0x0192_3f6a_7b1c_7d2e_8f40_5a6b_7c8d_9e0f,
+        ))
+    }
+
+    fn kat_id() -> uuid::Uuid {
+        uuid::Uuid::from_u128(0x0192_3f6a_7b1c_7d2e_8f40_0000_0000_0001)
+    }
+
+    fn kat_hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    fn kat_unhex(hex: &str) -> Vec<u8> {
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn key_derivation_matches_known_answers() {
+        // HKDF-SHA256, salt "gateway provider credentials"; the values also
+        // match an independent RFC 5869 HKDF (Python hmac/hashlib).
+        let key = KeyMaterial::derive(&KAT_KEY).unwrap();
+        assert_eq!(
+            kat_hex(key.encryption_key.as_ref()),
+            "94d572d938835714645e75e0b2ce01bab185e05f1718bfa6954e0060448cc8e1"
+        );
+        assert_eq!(
+            kat_hex(key.fingerprint_key.as_ref()),
+            "5e14b19c39aea0c05ab0701ef8468942ce90246b7e18d88f241ba4e7987a3fa8"
+        );
+        assert_eq!(key.key_id, "376e0409c496fa67");
+        assert_eq!(
+            CredentialCipher::new(&KAT_KEY).unwrap().key_id(),
+            key.key_id
+        );
+    }
+
+    #[test]
+    fn sealing_under_a_fixed_nonce_matches_known_answers() {
+        let cipher = CredentialCipher::new(&KAT_KEY).unwrap();
+        let plaintext = api_key("sk-known-answer").to_plaintext().unwrap();
+        assert_eq!(
+            String::from_utf8(plaintext.to_vec()).unwrap(),
+            "{\"kind\":\"api_key\",\"api_key\":\"sk-known-answer\"}"
+        );
+        let binding = binding(kat_org());
+        let sealed = cipher
+            .encrypt_with_nonce(&binding.aad(), &plaintext, KAT_NONCE)
+            .unwrap();
+        assert_eq!(sealed.key_id, cipher.key_id());
+        assert_eq!(
+            kat_hex(&sealed.ciphertext),
+            "a5a5a5a5a5a5a5a5a5a5a5a5490ee9bd26dcf60dfdbd3c50dedf9a892ec6ae7fe455acc0119d16453f3c79d7a8f88f076e701f5eeb71ac0b8f15229bfae1b5ca14b79a0d11c9da8a1d26"
+        );
+        // An independent AES-256-GCM (ring) agrees on the same inputs.
+        let derived = KeyMaterial::derive(&KAT_KEY).unwrap();
+        let ring_key = ring::aead::LessSafeKey::new(
+            ring::aead::UnboundKey::new(&ring::aead::AES_256_GCM, derived.encryption_key.as_ref())
+                .unwrap(),
+        );
+        let mut in_out = plaintext.to_vec();
+        ring_key
+            .seal_in_place_append_tag(
+                ring::aead::Nonce::assume_unique_for_key(KAT_NONCE),
+                ring::aead::Aad::from(binding.aad()),
+                &mut in_out,
+            )
+            .unwrap();
+        assert_eq!(sealed.ciphertext, [KAT_NONCE.as_slice(), &in_out].concat());
+        match cipher
+            .open(binding, &sealed.key_id, &sealed.ciphertext)
+            .unwrap()
+        {
+            ProviderSecret::ApiKey { api_key } => assert_eq!(api_key.as_str(), "sk-known-answer"),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn secrets_sealed_before_the_crypto_upgrade_still_open() {
+        // Sealed with random nonces by the pre-upgrade code
+        // (`print_sealed_vectors` on aes-gcm 0.10 / rand 0.8).
+        let cipher = CredentialCipher::new(&KAT_KEY).unwrap();
+        let key_id = cipher.key_id();
+        let provider = kat_unhex(
+            "1429bb53be2a18a19f60e4b318a392dc632967149ebd354c3935e74cbadfb4d577ea76bbcba8467677928119e9fa74771209726f9561cdf3e0b2bfe8c6371ff55bf38fd7c806eeb71d5d92",
+        );
+        match cipher.open(binding(kat_org()), &key_id, &provider).unwrap() {
+            ProviderSecret::ApiKey { api_key } => assert_eq!(api_key.as_str(), "sk-sealed-before"),
+            other => panic!("unexpected {other:?}"),
+        }
+        let webhook = kat_unhex(
+            "95a206a0d6bf28082cf9b5277a262078abb629b878f9f6de642d4890e6aeabbbe412bb7f84de0a2d1b62e929fa86",
+        );
+        assert_eq!(
+            cipher
+                .open_webhook_secret(kat_org(), kat_id(), &key_id, &webhook)
+                .unwrap()
+                .as_slice(),
+            b"webhook-key-before"
+        );
+        let identity = kat_unhex(
+            "19b677749d3cc83dda228e9fb83e5b5f47a2d76f1817c3812618812abec4c4a4fdfbfdab87c588c1da3906ffa993fc06",
+        );
+        assert_eq!(
+            cipher
+                .open_identity_provider_secret(kat_org(), kat_id(), &key_id, &identity)
+                .unwrap()
+                .as_str(),
+            "client-secret-before"
+        );
+        let content_key = kat_unhex(
+            "328265bed3e70947f640763408ce3768163659a0769aeb1b49bc97cdf5c7ae177da50a4dd743cc67ab901faa30469ec99f4a2aa55e3528b3580714a8",
+        );
+        assert_eq!(
+            cipher
+                .open_trace_content_key(kat_org(), kat_id(), &key_id, &content_key)
+                .unwrap()
+                .as_slice(),
+            [0x42; 32]
+        );
+    }
+
+    #[test]
+    #[ignore = "prints fresh ciphertexts for secrets_sealed_before_the_crypto_upgrade_still_open"]
+    fn print_sealed_vectors() {
+        let cipher = CredentialCipher::new(&KAT_KEY).unwrap();
+        let sealed = [
+            cipher
+                .seal(binding(kat_org()), &api_key("sk-sealed-before"))
+                .unwrap(),
+            cipher
+                .seal_webhook_secret(kat_org(), kat_id(), b"webhook-key-before")
+                .unwrap(),
+            cipher
+                .seal_identity_provider_secret(kat_org(), kat_id(), "client-secret-before")
+                .unwrap(),
+            cipher
+                .seal_trace_content_key(kat_org(), kat_id(), &[0x42; 32])
+                .unwrap(),
+        ];
+        for sealed in sealed {
+            println!("VECTOR {}", kat_hex(&sealed.ciphertext));
+        }
+    }
+
+    #[test]
+    fn fingerprints_match_known_answers() {
+        let cipher = CredentialCipher::new(&KAT_KEY).unwrap();
+        assert_eq!(
+            cipher
+                .fingerprint(
+                    kat_org(),
+                    "openai-main",
+                    &input(r#"{"api_key":"sk-known-answer"}"#)
+                )
+                .unwrap(),
+            "f1bb58c540f8cfdf1ede66fcddf15e04adc0ab70c4a55a88c887edaceb6d56f3"
+        );
+        assert_eq!(
+            cipher
+                .fingerprint(
+                    kat_org(),
+                    "bedrock-main",
+                    &input(
+                        r#"{"access_key_id":"AKIDEXAMPLE","secret_access_key":"secret","role_arn":"arn:aws:iam::123456789012:role/gw","external_id":"ext"}"#
+                    )
+                )
+                .unwrap(),
+            "dfc16d528482759dba443f67c7556da1b67c53877682c1070f0919a7350e21d4"
+        );
+        assert_eq!(
+            cipher
+                .identity_provider_fingerprint(kat_org(), Some("client-secret"))
+                .unwrap(),
+            "2c511478b8815e4404316861e38fb024a46d86e6aa409e5ae9f07e9b86678d1c"
+        );
+        assert_eq!(
+            cipher
+                .identity_provider_fingerprint(kat_org(), None)
+                .unwrap(),
+            "8ed20351c75b7c045ab552805c3225855732301bca11470d32a1175e960188f8"
         );
     }
 }

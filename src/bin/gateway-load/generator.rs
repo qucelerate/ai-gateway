@@ -19,7 +19,7 @@ use std::{
 };
 
 use futures::StreamExt;
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 use serde::Serialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -281,7 +281,7 @@ fn uniform(rng: &mut StdRng, (low, high): (f64, f64)) -> f64 {
     if high <= low {
         low
     } else {
-        rng.gen_range(low..high)
+        rng.random_range(low..high)
     }
 }
 
@@ -291,7 +291,7 @@ fn log_uniform(rng: &mut StdRng, (low, high): (f64, f64)) -> f64 {
     if high <= low {
         return low;
     }
-    (rng.gen_range(low.ln()..high.ln())).exp()
+    (rng.random_range(low.ln()..high.ln())).exp()
 }
 
 struct TenantPick {
@@ -301,16 +301,16 @@ struct TenantPick {
 
 fn spec(plan: &Plan, tenants: &Tenants, pick: &TenantPick, index: u64) -> Spec {
     let mut rng = StdRng::seed_from_u64(plan.seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ index);
-    let tenant = if !pick.tight.is_empty() && rng.gen_bool(plan.tight_share.clamp(0.0, 1.0)) {
-        pick.tight[rng.gen_range(0..pick.tight.len())]
+    let tenant = if !pick.tight.is_empty() && rng.random_bool(plan.tight_share.clamp(0.0, 1.0)) {
+        pick.tight[rng.random_range(0..pick.tight.len())]
     } else if plan.tenancy == "single" || pick.regular.len() == 1 {
         pick.regular[0]
     } else {
-        pick.regular[rng.gen_range(0..pick.regular.len())]
+        pick.regular[rng.random_range(0..pick.regular.len())]
     };
-    let key = rng.gen_range(0..tenants.tenants[tenant].keys.len());
+    let key = rng.random_range(0..tenants.tenants[tenant].keys.len());
     let total = plan.mix.chat + plan.mix.stream + plan.mix.embed;
-    let roll = rng.gen_range(0.0..total.max(f64::MIN_POSITIVE));
+    let roll = rng.random_range(0.0..total.max(f64::MIN_POSITIVE));
     let class = if roll < plan.mix.chat {
         Class::Chat
     } else if roll < plan.mix.chat + plan.mix.stream {
@@ -325,9 +325,9 @@ fn spec(plan: &Plan, tenants: &Tenants, pick: &TenantPick, index: u64) -> Spec {
         plan.end_users
     };
     let end_user =
-        (tenants.end_users && pool > 0 && rng.gen_bool(plan.end_user_share.clamp(0.0, 1.0)))
-            .then(|| rng.gen_range(0..pool));
-    let fault = plan.faults.pick(rng.gen_range(0.0..1.0));
+        (tenants.end_users && pool > 0 && rng.random_bool(plan.end_user_share.clamp(0.0, 1.0)))
+            .then(|| rng.random_range(0..pool));
+    let fault = plan.faults.pick(rng.random_range(0.0..1.0));
     let cap = (tenants.max_output_tokens as f64).max(1.0);
     let out = uniform(&mut rng, plan.output_tokens).clamp(1.0, cap) as u64;
     let mut directive = Directive {
@@ -1054,7 +1054,7 @@ pub async fn run(plan: Plan, tenants: Tenants) -> Result<Stats, String> {
         };
         let rate = plan.rate * ramp;
         let gap = if plan.poisson {
-            -(1.0 - rng.gen_range(0.0..1.0f64)).ln() / rate
+            -(1.0 - rng.random_range(0.0..1.0f64)).ln() / rate
         } else {
             1.0 / rate
         };

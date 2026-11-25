@@ -13,6 +13,7 @@ pub mod jobs;
 pub mod listeners;
 pub mod metrics;
 pub mod net;
+pub mod os_random;
 pub mod persistence;
 pub mod provider;
 pub mod transport;

@@ -768,7 +768,7 @@ impl ModelCardService {
             // fingerprint's readable fields: only its digest.
             body: serde_json::json!({
                 "model": model,
-                "note_sha256": format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(note.as_bytes())),
+                "note_sha256": sha256_hex(note.as_bytes()),
             }),
         };
         match self
@@ -1003,6 +1003,15 @@ pub fn governance(rows: Vec<ActivationRow>, older_unread: bool) -> CardGovernanc
         history,
         truncated,
     }
+}
+
+/// Lowercase hex SHA-256, the form audit bodies and idempotency fingerprints
+/// record a digest in.
+pub(crate) fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
+    <sha2::Sha256 as sha2::Digest>::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(test)]
@@ -1468,5 +1477,15 @@ pub(crate) mod tests {
         assert_ne!(note_id(org, "m"), note_id(OrganizationId::new(), "m"));
         assert!(crate::domain::admin::AdminOperation::new("model_card_note.set").is_ok());
         assert!(AuditAction::new("model_card_note.set").is_ok());
+    }
+
+    /// The form `{:x}` gave sha2 0.10 digests, which stored idempotency
+    /// fingerprints keep.
+    #[test]
+    fn digests_are_lowercase_hex_sha256() {
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 }

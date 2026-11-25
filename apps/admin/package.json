@@ -1,10 +1,10 @@
 {
   "name": "gateway-admin",
   "private": true,
-  "version": "2026.11.0-rc.2",
+  "version": "2026.11.0-rc.3",
   "type": "module",
   "engines": {"node": ">=22.22.2", "npm": ">=10.9.3"},
   "scripts": {"dev": "vite", "build": "tsc -b && vite build", "test": "vitest run"},
   "dependencies": {"@carbon/icons-react": "11.92.0", "@carbon/react": "1.121.0", "react": "19.3.1", "react-dom": "19.3.1"},
-  "devDependencies": {"@types/node": "22.20.7", "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "@vitejs/plugin-react": "6.3.0", "jsdom": "30.1.1", "sass-embedded": "1.108.2", "typescript": "7.0.2", "vite": "8.3.8", "vitest": "5.1.2"}
+  "devDependencies": {"@types/node": "22.20.7", "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "@vitejs/plugin-react": "6.3.0", "jsdom": "31.0.1", "sass-embedded": "1.108.2", "typescript": "7.0.2", "vite": "8.3.8", "vitest": "5.1.2"}
 }

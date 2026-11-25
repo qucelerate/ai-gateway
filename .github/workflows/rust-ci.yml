@@ -54,6 +54,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Line tables only: panics and backtraces keep file and line, and the 50+
+  # integration test binaries, each linking the whole crate, stay small
+  # enough for a GitHub-hosted runner's disk.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
   # Disposable CI-only credentials for the service container below.
   POSTGRES_USER: gateway_bootstrap_admin
   POSTGRES_PASSWORD: ci-bootstrap-password
@@ -120,6 +124,18 @@ jobs:
   check-and-test:
     runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-24.04' }}
     steps:
+      # GitHub's image leaves about 14 GB free; the test build needs more.
+      # Its preinstalled toolchains this job never uses go first. Only on
+      # GitHub-hosted runners: a self-hosted one keeps its own tools.
+      - name: Free disk space on a GitHub-hosted runner
+        if: runner.environment == 'github-hosted'
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force >/dev/null || true
+          df -h / | tail -1
+
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

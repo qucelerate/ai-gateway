@@ -25,7 +25,7 @@ use crate::{
 use chrono::Utc;
 use futures::{Future, Stream};
 use hkdf::Hkdf;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use std::{
     num::NonZeroU32,
@@ -2010,5 +2010,25 @@ mod tests {
         assert_eq!(digest(&plain), empty);
         assert_ne!(digest(&with_tool), empty);
         assert_ne!(digest(&with_tool), digest(&forced));
+    }
+
+    // Recorded before the hkdf 0.13 / hmac 0.13 upgrade: stored request
+    // fingerprints depend on it. HKDF-SHA256 with no salt; also matches an
+    // independent RFC 5869 HKDF (Python hmac/hashlib).
+    #[test]
+    fn the_fingerprint_key_matches_known_answers() {
+        let key = derive_accounting_fingerprint_key(b"accounting-secret-known-answer");
+        let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        assert_eq!(
+            hex(&key),
+            "651810ddf09dffa3aa0010f5ebe9f10ad75cae9005b6203cd03d497316fa83c5"
+        );
+        let mut mac = HmacSha256::new_from_slice(&key).unwrap();
+        frame(&mut mac, b"gateway-accounting-v1");
+        frame(&mut mac, b"payload");
+        assert_eq!(
+            hex(&mac.finalize().into_bytes()),
+            "293cc3d5345c8096bc951903749c39798e0fad05e2680101463f3aefe378428c"
+        );
     }
 }

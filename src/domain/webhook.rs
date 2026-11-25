@@ -17,8 +17,7 @@ use std::{
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Utc};
-use hmac::{Hmac, Mac};
-use rand::{RngCore, rngs::OsRng};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use url::{Host, Url};
@@ -312,7 +311,7 @@ impl fmt::Debug for WebhookSecret {
 impl WebhookSecret {
     pub fn generate() -> Self {
         let mut bytes = Zeroizing::new([0_u8; SECRET_BYTES]);
-        OsRng.fill_bytes(bytes.as_mut());
+        crate::os_random::fill(bytes.as_mut());
         Self(Zeroizing::new(format!(
             "{SECRET_PREFIX}{}",
             STANDARD.encode(bytes.as_ref())
@@ -347,7 +346,7 @@ pub struct DeliveryEnvelope<'a> {
 /// The `webhook-signature` header value for a delivery.
 pub fn sign(key: &[u8], message_id: &str, timestamp: i64, body: &[u8]) -> String {
     let mut mac =
-        <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC accepts keys of any length");
+        <Hmac<Sha256> as KeyInit>::new_from_slice(key).expect("HMAC accepts keys of any length");
     mac.update(format!("{message_id}.{timestamp}.").as_bytes());
     mac.update(body);
     format!("v1,{}", STANDARD.encode(mac.finalize().into_bytes()))

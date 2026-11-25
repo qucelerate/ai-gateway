@@ -1114,4 +1114,16 @@ mod tests {
             "a different user must produce a different membership identity"
         );
     }
+
+    // Recorded before the md-5 0.11 upgrade; it must also equal the
+    // migration's `md5(team_id::text || ':' || user_id::text)::uuid`.
+    #[test]
+    fn team_membership_version_ids_match_known_answers() {
+        let team = TeamId(Uuid::from_u128(1));
+        let user = UserAccountId(Uuid::from_u128(2));
+        assert_eq!(
+            team_membership_version_id(team, user).to_string(),
+            "dcc1285e-61ed-7d9c-16b7-5bfe91add464"
+        );
+    }
 }

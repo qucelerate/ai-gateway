@@ -28,7 +28,6 @@
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use rand::Rng;
 
 use crate::{
     domain::inference::{
@@ -95,7 +94,7 @@ impl RetrySettings {
                 // Full jitter in [backoff/2, backoff], so callers retrying
                 // together spread out.
                 let half = backoff / 2;
-                half + half.mul_f64(rand::thread_rng().r#gen::<f64>())
+                half + half.mul_f64(rand::random::<f64>())
             }
         };
         (waited + delay <= self.max_wait).then_some(delay)

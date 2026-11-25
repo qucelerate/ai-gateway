@@ -6,8 +6,8 @@ type: application
 # with version and appVersion both set to the release: a v2026.11.0 tag
 # publishes chart 2026.11.0 with appVersion 2026.11.0, whose images are
 # tagged 2026.11.0. clients/release/release.py bump sets both.
-version: 2026.11.0-rc.2
-appVersion: "2026.11.0-rc.2"
+version: 2026.11.0-rc.3
+appVersion: "2026.11.0-rc.3"
 home: https://gateway.qucelerate.com
 sources:
   - https://github.com/qucelerate/ai-gateway

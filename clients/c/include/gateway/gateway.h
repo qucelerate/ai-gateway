@@ -64,7 +64,7 @@ extern "C" {
 #define GW_VERSION_MINOR 11
 #define GW_VERSION_PATCH 0
 /* The same version as a string; CMakeLists.txt reads the version from here. */
-#define GW_VERSION_STRING "2026.11.0-rc.2"
+#define GW_VERSION_STRING "2026.11.0-rc.3"
 /* Defined when this header declares the files and batches calls. */
 #define GW_HAS_BATCHES 1
 

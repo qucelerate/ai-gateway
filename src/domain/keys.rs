@@ -1,7 +1,6 @@
 use std::fmt;
 
-use hmac::{Hmac, Mac};
-use rand::{RngCore, rngs::OsRng};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 use thiserror::Error;
@@ -173,7 +172,7 @@ pub(crate) fn validate_scopes(scopes: &[ApiKeyScope]) -> Result<(), KeyError> {
 
 pub(crate) fn generate(pepper: &ApiKeyPepper) -> GeneratedKey {
     let mut bytes = [0_u8; KEY_BYTES];
-    OsRng.fill_bytes(&mut bytes);
+    crate::os_random::fill(&mut bytes);
     let encoded = hex_encode(&bytes);
     let bearer = format!("{BEARER_PREFIX}{encoded}");
     let public_prefix = bearer[..BEARER_PREFIX.len() + PUBLIC_PREFIX_HEX_LEN].to_owned();
@@ -294,5 +293,18 @@ mod tests {
             Err(KeyError::InvalidBearer)
         );
         assert_eq!(validate_scopes(&[]), Err(KeyError::EmptyScopes));
+    }
+
+    // Recorded before the hmac 0.13 / sha2 0.11 upgrade: every stored API
+    // key digest depends on it. Also matches Python's hmac module.
+    #[test]
+    fn key_digests_match_known_answers() {
+        let pepper = ApiKeyPepper::from_bytes(b"test-pepper").unwrap();
+        let bearer = format!("{BEARER_PREFIX}{}", "0123456789abcdef".repeat(4));
+        assert_eq!(
+            hex_encode(&digest(&pepper, bearer.as_bytes())),
+            "1f8817d0a73b46b08ce2af8d5bcc2b0789b1dae4275c16b2fc00e5f7e221f2f3"
+        );
+        assert!(verify_digest(&pepper, &bearer, &digest(&pepper, bearer.as_bytes())).unwrap());
     }
 }

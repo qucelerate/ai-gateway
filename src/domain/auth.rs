@@ -3,8 +3,7 @@
 
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use hmac::{Hmac, Mac};
-use rand::{RngCore, rngs::OsRng};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -39,7 +38,7 @@ impl AuthCrypto {
     }
     pub fn opaque_token(&self) -> OpaqueToken {
         let mut bytes = [0_u8; 32];
-        OsRng.fill_bytes(&mut bytes);
+        crate::os_random::fill(&mut bytes);
         OpaqueToken(URL_SAFE_NO_PAD.encode(bytes))
     }
     pub fn digest(&self, value: &str) -> Vec<u8> {
@@ -56,27 +55,36 @@ impl AuthCrypto {
     /// Encrypt a PKCE verifier for storage. The returned bytes contain a fresh
     /// nonce followed by ciphertext; neither is a bearer or persisted plaintext.
     pub fn encrypt_verifier(&self, verifier: &str) -> Result<Vec<u8>, AuthCryptoError> {
-        use aes_gcm::{
-            Aes256Gcm, KeyInit, Nonce,
-            aead::{Aead, AeadCore},
-        };
+        let nonce = crate::os_random::bytes::<12>();
+        self.encrypt_verifier_with_nonce(verifier, nonce)
+    }
+    /// `encrypt_verifier` under a given nonce; only `encrypt_verifier` (a
+    /// fresh random nonce) and the known-answer tests call it.
+    fn encrypt_verifier_with_nonce(
+        &self,
+        verifier: &str,
+        nonce: [u8; 12],
+    ) -> Result<Vec<u8>, AuthCryptoError> {
+        use aes_gcm::{Aes256Gcm, Nonce, aead::Aead};
         let cipher = Aes256Gcm::new_from_slice(&self.encryption_key)
             .map_err(|_| AuthCryptoError::Encryption)?;
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let ciphertext = cipher
-            .encrypt(Nonce::from_slice(&nonce), verifier.as_bytes())
+            .encrypt(&Nonce::from(nonce), verifier.as_bytes())
             .map_err(|_| AuthCryptoError::Encryption)?;
         Ok([nonce.as_slice(), ciphertext.as_slice()].concat())
     }
     pub fn decrypt_verifier(&self, encrypted: &[u8]) -> Result<String, AuthCryptoError> {
-        use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
+        use aes_gcm::{Aes256Gcm, Nonce, aead::Aead};
         if encrypted.len() < 12 {
             return Err(AuthCryptoError::Decryption);
         }
         let cipher = Aes256Gcm::new_from_slice(&self.encryption_key)
             .map_err(|_| AuthCryptoError::Decryption)?;
         let plaintext = cipher
-            .decrypt(Nonce::from_slice(&encrypted[..12]), &encrypted[12..])
+            .decrypt(
+                &Nonce::try_from(&encrypted[..12]).map_err(|_| AuthCryptoError::Decryption)?,
+                &encrypted[12..],
+            )
             .map_err(|_| AuthCryptoError::Decryption)?;
         String::from_utf8(plaintext).map_err(|_| AuthCryptoError::Decryption)
     }
@@ -622,5 +630,77 @@ mod tests {
             LoginFailure::IdentityUnavailable.persisted_event(),
             SecurityEvent::LoginIdentityUnavailable
         );
+    }
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    fn unhex(hex: &str) -> Vec<u8> {
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    // Known answers recorded before the aes-gcm 0.11 / hmac 0.13 / sha2 0.11
+    // / base64 0.23 upgrade: stored session and login digests and sealed
+    // PKCE verifiers depend on them.
+    #[test]
+    fn digests_and_pkce_challenges_match_known_answers() {
+        let crypto = crypto();
+        // HMAC-SHA256; also matches Python's hmac module.
+        assert_eq!(
+            hex(&crypto.digest("session-token")),
+            "bd5b0919fc2e6e49289943534aad9e1d9578ffdffb890d4c40383a07e11b4975"
+        );
+        assert!(crypto.verify_digest("session-token", &crypto.digest("session-token")));
+        assert!(!crypto.verify_digest("session-tokeN", &crypto.digest("session-token")));
+        // RFC 7636 appendix B.
+        assert_eq!(
+            AuthCrypto::pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+        // Opaque tokens: 32 bytes, base64url without padding.
+        let token = crypto.opaque_token();
+        assert_eq!(token.as_str().len(), 43);
+        assert!(
+            token
+                .as_str()
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        );
+    }
+
+    #[test]
+    fn sealed_verifiers_match_known_answers() {
+        let crypto = crypto();
+        let sealed = crypto
+            .encrypt_verifier_with_nonce("verifier-known-answer", [0x5c; 12])
+            .unwrap();
+        assert_eq!(
+            hex(&sealed),
+            "5c5c5c5c5c5c5c5c5c5c5c5c46b9c9e7e8e5c793221b33ea3208e85b8362ca75da352f7eb31f6338a22b6a66d0e7f262ae"
+        );
+        assert_eq!(
+            crypto.decrypt_verifier(&sealed).unwrap(),
+            "verifier-known-answer"
+        );
+        // Sealed with a random nonce by the pre-upgrade code.
+        assert_eq!(
+            crypto
+                .decrypt_verifier(&unhex(
+                    "ab0db69dbd4fcfe7ae5c27ac71ca9a5a16425e38cae93563af9a722ec9770e9c7276369f3f3f919fcc34b517948689fc5fe8"
+                ))
+                .unwrap(),
+            "verifier-sealed-before"
+        );
+    }
+
+    #[test]
+    #[ignore = "prints a fresh sealed verifier for sealed_verifiers_match_known_answers"]
+    fn print_sealed_verifier() {
+        let sealed = crypto().encrypt_verifier("verifier-sealed-before").unwrap();
+        println!("VECTOR {}", hex(&sealed));
     }
 }

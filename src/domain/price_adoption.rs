@@ -442,7 +442,11 @@ pub fn fingerprint(proposals: &[ProposedPrice]) -> String {
         hasher.update(changes.join(";").as_bytes());
         hasher.update([0]);
     }
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 /// Sets the proposal's dimensions on the deployment's price, and on its
@@ -954,5 +958,14 @@ mod tests {
         ] {
             assert_eq!(status.as_str().parse::<HoldStatus>(), Ok(status));
         }
+    }
+
+    /// Stored dismissals compare against this lowercase hex SHA-256.
+    #[test]
+    fn the_fingerprint_is_lowercase_hex_sha256() {
+        assert_eq!(
+            fingerprint(&[]),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 }

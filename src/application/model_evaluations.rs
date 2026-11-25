@@ -200,11 +200,8 @@ impl ModelEvaluationService {
                 "name": name,
                 "description": description,
                 "item_count": items.len(),
-                "items_sha256": format!(
-                    "{:x}",
-                    <sha2::Sha256 as sha2::Digest>::digest(
-                        serde_json::to_vec(items).unwrap_or_default()
-                    )
+                "items_sha256": super::model_cards::sha256_hex(
+                    serde_json::to_vec(items).unwrap_or_default()
                 ),
             }),
         };

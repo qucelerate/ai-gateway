@@ -898,8 +898,7 @@ fn throttled(error: &ProviderError) -> bool {
 
 /// `wait` scaled by a random factor in [0.5, 1.0].
 fn jittered(wait: Duration) -> Duration {
-    use rand::Rng;
-    wait.mul_f64(rand::thread_rng().gen_range(0.5..=1.0))
+    wait.mul_f64(rand::random_range(0.5..=1.0))
 }
 
 /// The offers of a `ListFoundationModelAgreementOffers` answer. An offer

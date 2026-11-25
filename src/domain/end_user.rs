@@ -1016,4 +1016,14 @@ mod tests {
         assert_ne!(plan_id(a, "u"), end_user_id(a, "u"));
         assert_ne!(grant_id(a, "r"), grant_id(a, "s"));
     }
+
+    // Recorded before the md-5 0.11 upgrade: stored row ids depend on it.
+    // MD5("plan:a:") per Python's hashlib.
+    #[test]
+    fn stable_ids_match_known_answers() {
+        assert_eq!(
+            stable_id(&["plan", "a"]).to_string(),
+            "8479637e-2808-6898-5fcd-8d589394bf0a"
+        );
+    }
 }

@@ -5198,4 +5198,39 @@ mod tests {
             Err(ConfigError::InvalidOpenAiCompatible)
         ));
     }
+
+    /// Which secret values decode as unpadded base64url and which are taken
+    /// as raw bytes. Recorded before the base64 0.23 upgrade: a change here
+    /// would silently change a configured key.
+    #[test]
+    fn secret_values_decode_as_unpadded_base64url_or_stay_raw() {
+        let read = |value: &'static str| {
+            secret_bytes(&|_: &str| Ok(value.to_owned()), "SECRET", 1).unwrap()
+        };
+        let key: Vec<u8> = (0..32).collect();
+        assert_eq!(read("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"), key);
+        assert_eq!(read("-_-_"), [0xfb, 0xff, 0xbf]);
+        assert_eq!(read("AA"), [0]);
+        for raw in [
+            // Padding, the standard alphabet, non-zero trailing bits, an
+            // impossible length, and characters outside any alphabet.
+            "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+            "AA==",
+            "+/+/",
+            "AB",
+            "AAAAA",
+            "not base64!",
+        ] {
+            assert_eq!(read(raw), raw.as_bytes(), "{raw}");
+        }
+        assert_eq!(
+            secret_bytes_exact(
+                &|_: &str| Ok("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8".to_owned()),
+                "SECRET",
+                32
+            )
+            .unwrap(),
+            key
+        );
+    }
 }

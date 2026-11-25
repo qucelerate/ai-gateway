@@ -25,7 +25,7 @@ use std::collections::BTreeMap;
 
 use aes_gcm::{
     Aes256Gcm, KeyInit, Nonce,
-    aead::{Aead, AeadCore, OsRng, Payload},
+    aead::{Aead, Payload},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -602,7 +602,9 @@ pub enum ContentCipherError {
 
 /// A new random content key.
 pub fn new_content_key() -> Zeroizing<Vec<u8>> {
-    Zeroizing::new(Aes256Gcm::generate_key(&mut OsRng).to_vec())
+    let mut key = Zeroizing::new(vec![0_u8; 32]);
+    crate::os_random::fill(&mut key);
+    key
 }
 
 /// `nonce || ciphertext` of `plaintext` under `key`.
@@ -611,11 +613,22 @@ pub fn seal_content(
     aad: &[u8],
     plaintext: &[u8],
 ) -> Result<Vec<u8>, ContentCipherError> {
+    let nonce = crate::os_random::bytes::<NONCE_BYTES>();
+    seal_content_with_nonce(key, aad, plaintext, nonce)
+}
+
+/// `seal_content` under a given nonce; only `seal_content` (a fresh random
+/// nonce) and the known-answer tests call it.
+fn seal_content_with_nonce(
+    key: &[u8],
+    aad: &[u8],
+    plaintext: &[u8],
+    nonce: [u8; NONCE_BYTES],
+) -> Result<Vec<u8>, ContentCipherError> {
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| ContentCipherError::Encryption)?;
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ciphertext = cipher
         .encrypt(
-            &nonce,
+            &Nonce::from(nonce),
             Payload {
                 msg: plaintext,
                 aad,
@@ -636,7 +649,7 @@ pub fn open_content(
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| ContentCipherError::Decryption)?;
     cipher
         .decrypt(
-            Nonce::from_slice(&sealed[..NONCE_BYTES]),
+            &Nonce::try_from(&sealed[..NONCE_BYTES]).map_err(|_| ContentCipherError::Decryption)?,
             Payload {
                 msg: &sealed[NONCE_BYTES..],
                 aad,
@@ -917,5 +930,56 @@ mod tests {
             open_content(&new_content_key(), &content_aad(org, trace), &sealed),
             Err(ContentCipherError::Decryption)
         );
+    }
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    fn unhex(hex: &str) -> Vec<u8> {
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    // Recorded before the aes-gcm 0.11 upgrade: stored trace content
+    // depends on it.
+    #[test]
+    fn sealed_content_matches_known_answers() {
+        let key = [0x33_u8; 32];
+        let sealed =
+            seal_content_with_nonce(&key, b"trace-aad", b"{\"content\":true}", [0x77; 12]).unwrap();
+        assert_eq!(
+            hex(&sealed),
+            "777777777777777777777777cce61baaa5f849694804df7f6f8b679df9ac19e104698b9f5f2bc79130cb5cf5"
+        );
+        assert_eq!(
+            open_content(&key, b"trace-aad", &sealed)
+                .unwrap()
+                .as_slice(),
+            b"{\"content\":true}"
+        );
+        // Sealed with a random nonce by the pre-upgrade code.
+        assert_eq!(
+            open_content(
+                &key,
+                b"trace-aad",
+                &unhex("23d1ac188263726f67486efe1ef67e48869cb691e135045ebc88e35f63d2698c964a8fe863cc371b9084db34cd55bdaa54")
+            )
+                .unwrap()
+                .as_slice(),
+            b"content-sealed-before"
+        );
+        let fresh = new_content_key();
+        assert_eq!(fresh.len(), 32);
+        assert_ne!(fresh.as_slice(), new_content_key().as_slice());
+    }
+
+    #[test]
+    #[ignore = "prints fresh sealed content for sealed_content_matches_known_answers"]
+    fn print_sealed_content() {
+        let sealed = seal_content(&[0x33; 32], b"trace-aad", b"content-sealed-before").unwrap();
+        println!("VECTOR {}", hex(&sealed));
     }
 }

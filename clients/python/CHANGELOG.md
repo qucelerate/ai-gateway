@@ -7,7 +7,7 @@ calendar version (YYYY.M.PATCH, see the repository's CHANGELOG.md); a
 `### Breaking` heading marks a change that needs code changes. The client
 implements the gateway's inference contract 1.0.0.
 
-## 2026.11.0-rc.2
+## 2026.11.0-rc.3
 
 ### Breaking
 

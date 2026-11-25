@@ -17,6 +17,12 @@ updates:
     schedule: { interval: weekly }
     groups:
       admin: { patterns: ["*"] }
+    ignore:
+      # The admin builds and runs on Node 22 (admin-frontend-ci.yml,
+      # docker/admin/Dockerfile); newer @types/node majors describe APIs it
+      # does not have and break `tsc -b`. Minor and patch updates still come.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /apps/docs
     schedule: { interval: weekly }

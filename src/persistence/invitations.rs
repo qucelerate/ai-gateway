@@ -6,7 +6,6 @@
 
 use base64::Engine as _;
 use chrono::{DateTime, Utc};
-use rand::RngCore as _;
 use sha2::{Digest as _, Sha256};
 use sqlx::{FromRow, PgConnection, PgPool};
 use uuid::Uuid;
@@ -27,7 +26,7 @@ pub struct InvitationToken(Zeroizing<String>);
 impl InvitationToken {
     pub(crate) fn generate() -> Self {
         let mut bytes = Zeroizing::new([0_u8; 32]);
-        rand::rngs::OsRng.fill_bytes(bytes.as_mut());
+        crate::os_random::fill(bytes.as_mut());
         Self(Zeroizing::new(
             base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes.as_ref()),
         ))
