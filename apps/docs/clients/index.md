@@ -19,18 +19,18 @@ The C library, `libgateway`, has a small ABI-stable API; the C++ wrapper is head
 Install a client with your language's own tools:
 
 ```bash
-pip install qucelerate-ai-gateway==2026.11.0-rc.1                      # Python
-cargo add qucelerate-ai-gateway@=2026.11.0-rc.1                        # Rust
-go get github.com/qucelerate/ai-gateway/clients/go@v0.202611.0-rc.1    # Go
+pip install qucelerate-ai-gateway==2026.11.0-rc.2                      # Python
+cargo add qucelerate-ai-gateway@=2026.11.0-rc.2                        # Rust
+go get github.com/qucelerate/ai-gateway/clients/go@v0.202611.0-rc.2    # Go
 ```
 
-For Java, add the dependency `com.qucelerate:qucelerate-ai-gateway:2026.11.0-rc.1` to your Maven or Gradle build:
+For Java, add the dependency `com.qucelerate:qucelerate-ai-gateway:2026.11.0-rc.2` to your Maven or Gradle build:
 
 ```xml
 <dependency>
   <groupId>com.qucelerate</groupId>
   <artifactId>qucelerate-ai-gateway</artifactId>
-  <version>2026.11.0-rc.1</version>
+  <version>2026.11.0-rc.2</version>
 </dependency>
 ```
 
@@ -40,7 +40,7 @@ For C and C++, download the source archive from the release and build it with CM
 
 Releases are calendar versions, `YYYY.M.PATCH`: the year, the month without a leading zero (`2026.11.0`, `2027.1.0`), then the release within that month, from 0. A newer release always has a larger version, but the number says when it was made, not whether it breaks anything, so:
 
-- **Rust:** pin the exact version (`qucelerate-ai-gateway = "=2026.11.0-rc.1"`). Cargo treats every 2026 release as compatible with any other, so `"2026.11"` would accept a later 2026 release unseen.
+- **Rust:** pin the exact version (`qucelerate-ai-gateway = "=2026.11.0-rc.2"`). Cargo treats every 2026 release as compatible with any other, so `"2026.11"` would accept a later 2026 release unseen.
 - **Go:** a Go module version of 2 or more needs a path suffix, so the module's versions are `v0.YYYYMM.PATCH`: release 2026.11.0 is `v0.202611.0`. The client still reports 2026.11.0 (`gateway.Version`, User-Agent).
 - **Python, Java, C:** the version as it is (PyPI spells a pre-release `2026.11.0rc1`). The C library's SONAME stays `libqucelerate-ai-gateway.so.0`; it changes only if the ABI breaks.
 

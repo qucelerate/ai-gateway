@@ -1508,7 +1508,7 @@ mod tests {
 
     #[test]
     fn checked_manifest_example_is_valid() {
-        let bytes = include_bytes!("../../docs/catalog-manifest.example.json");
+        let bytes = include_bytes!("../../examples/catalog-manifest.json");
         CatalogManifest::parse(bytes).unwrap();
     }
 

@@ -48,7 +48,7 @@ import java.util.function.Function;
  * for concurrent use.
  */
 public final class GatewayClient {
-    static final String VERSION = "2026.11.0-rc.1";
+    static final String VERSION = "2026.11.0-rc.2";
     private static final String CHAT_PATH = "/api/inference/v1/chat/completions";
     private static final String STREAM_PATH = "/api/inference/v1/chat/completions/stream";
     private static final String EMBEDDINGS_PATH = "/api/inference/v1/embeddings";

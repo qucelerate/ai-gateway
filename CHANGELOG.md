@@ -17,7 +17,7 @@ page; each client's changes are also in `clients/*/CHANGELOG.md`.
 
 ## [Unreleased]
 
-## [2026.11.0-rc.1] - 2026-11-25
+## [2026.11.0-rc.2] - 2026-11-25
 
 The first public release.
 
@@ -78,4 +78,4 @@ The first public release.
   SLSA provenance; one tag publishes everything.
 
 [Unreleased]: https://github.com/qucelerate/ai-gateway/compare/v2026.11.0...main
-[2026.11.0-rc.1]: https://github.com/qucelerate/ai-gateway/releases/tag/v2026.11.0-rc.1
+[2026.11.0-rc.2]: https://github.com/qucelerate/ai-gateway/releases/tag/v2026.11.0-rc.2

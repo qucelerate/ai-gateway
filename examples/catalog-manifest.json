@@ -1,0 +1,91 @@
+{
+  "release": {
+    "version": "2026-01"
+  },
+  "providers": [
+    {
+      "adapter_instance_key": "openai-main",
+      "family": "openai"
+    },
+    {
+      "adapter_instance_key": "anthropic-main",
+      "family": "anthropic"
+    }
+  ],
+  "deployments": [
+    {
+      "name": "openai-chat",
+      "model": "gpt-4o-mini",
+      "location": null,
+      "adapter_instance_key": "openai-main",
+      "capabilities": [
+        {
+          "operation": "chat",
+          "max_input_bytes": 131072,
+          "max_output_tokens": 4096,
+          "max_tokens_per_byte": 1,
+          "tokenizer": "configured",
+          "reservation_ttl_seconds": 300,
+          "chat_input_count_mode": "unsupported"
+        }
+      ]
+    },
+    {
+      "name": "claude-chat",
+      "model": "claude-3-5-sonnet-latest",
+      "location": null,
+      "adapter_instance_key": "anthropic-main",
+      "capabilities": [
+        {
+          "operation": "chat",
+          "max_input_bytes": 131072,
+          "max_output_tokens": 4096,
+          "max_tokens_per_byte": 1,
+          "tokenizer": "configured",
+          "reservation_ttl_seconds": 300,
+          "chat_input_count_mode": "provider_api_exact"
+        }
+      ]
+    }
+  ],
+  "prices": [
+    {
+      "deployment": "openai-chat",
+      "operation": "chat",
+      "input_minor_per_token": 1,
+      "output_minor_per_token": 2,
+      "cached_input_minor_per_token": 1,
+      "reasoning_minor_per_token": 0,
+      "other_minor_per_token": 0,
+      "currency": "USD",
+      "source": "operator",
+      "source_version": "2026-01",
+      "confidence": "known"
+    },
+    {
+      "deployment": "claude-chat",
+      "operation": "chat",
+      "input_minor_per_token": 2,
+      "output_minor_per_token": 4,
+      "cached_input_minor_per_token": 0,
+      "reasoning_minor_per_token": 0,
+      "other_minor_per_token": 0,
+      "currency": "USD",
+      "source": "operator",
+      "source_version": "2026-01",
+      "confidence": "conservative"
+    }
+  ],
+  "routes": [
+    {
+      "alias": "openai-chat",
+      "operation": "chat",
+      "deployment": "openai-chat"
+    },
+    {
+      "alias": "claude-chat",
+      "operation": "chat",
+      "deployment": "claude-chat"
+    }
+  ]
+}

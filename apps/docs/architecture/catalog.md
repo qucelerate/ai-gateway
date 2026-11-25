@@ -91,7 +91,7 @@ Operators apply a manifest from the server, which stores and activates it:
 gateway catalog apply --organization <organization id> --file catalog.json
 ```
 
-The repository's `docs/catalog-manifest.example.json` is a complete example.
+The repository's `examples/catalog-manifest.json` is a complete example.
 
 ## Prices
 

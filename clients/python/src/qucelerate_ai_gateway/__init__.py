@@ -12,7 +12,7 @@ unless you pass one) and retries automatically only when the gateway refused
 the request before reserving anything.
 """
 
-__version__ = "2026.11.0-rc.1"
+__version__ = "2026.11.0-rc.2"
 
 from ._async import AsyncChatStream, AsyncClient  # noqa: E402
 from ._client import ChatStream, Client  # noqa: E402

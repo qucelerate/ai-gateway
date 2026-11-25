@@ -39,8 +39,12 @@ EOF
     python3 -m venv "$work/venv"
     # Only the wheel, never the source tree: a clean environment and the
     # wheel's declared dependencies.
-    "$work/venv/bin/python" -m pip install --quiet --disable-pip-version-check \
-      "$dist/qucelerate_ai_gateway-$version-py3-none-any.whl"
+    # By pattern: Python spells a pre-release its own way in file names
+    # (2026.11.0-rc.1 becomes 2026.11.0rc1), and <dist> holds one wheel.
+    wheels=("$dist"/qucelerate_ai_gateway-*-py3-none-any.whl)
+    [ "${#wheels[@]}" -eq 1 ] && [ -f "${wheels[0]}" ] ||
+      { echo "expected one wheel in $dist" >&2; exit 1; }
+    "$work/venv/bin/python" -m pip install --quiet --disable-pip-version-check "${wheels[0]}"
     (cd "$work" && "$work/venv/bin/python" -I "$smoke/smoke.py")
     ;;
   go)

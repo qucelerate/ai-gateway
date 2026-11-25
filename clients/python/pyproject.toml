@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qucelerate-ai-gateway"
-version = "2026.11.0-rc.1"
+version = "2026.11.0-rc.2"
 description = "Client for the QuCelerate AI Gateway inference API (contract 1.0.0)"
 readme = "README.md"
 license = "MIT"
