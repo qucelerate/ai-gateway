@@ -502,6 +502,8 @@ jobs:
       contents: write
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      PYTHON_VERSION: ${{ needs.version.outputs.python_version }}
+      MODULE_TAG: ${{ needs.version.outputs.go_module_tag }}
       PRERELEASE: ${{ needs.version.outputs.prerelease }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -582,8 +584,22 @@ jobs:
             echo
             echo "---"
             echo
-            echo "Images: \`ghcr.io/qucelerate/ai-gateway:${VERSION}\`, \`ai-gateway-admin\`, \`ai-gateway-docs\`;"
-            echo "chart: \`oci://ghcr.io/qucelerate/charts/ai-gateway --version ${VERSION}\`, each signed with cosign (keyless)."
+            pkgs="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pkgs/container"
+            echo "**Container images** (signed with cosign, keyless):"
+            echo
+            for image in ai-gateway ai-gateway-admin ai-gateway-docs; do
+              echo "- [\`ghcr.io/qucelerate/${image}:${VERSION}\`](${pkgs}/${image})"
+            done
+            echo
+            echo "**Helm chart:** [\`oci://ghcr.io/qucelerate/charts/ai-gateway --version ${VERSION}\`](${pkgs}/charts%2Fai-gateway)"
+            echo
+            echo "**Clients:** [PyPI](https://pypi.org/project/qucelerate-ai-gateway/${PYTHON_VERSION}/),"
+            echo "[crates.io](https://crates.io/crates/qucelerate-ai-gateway/${VERSION}),"
+            echo "[Maven Central](https://central.sonatype.com/artifact/com.qucelerate/qucelerate-ai-gateway/${VERSION}),"
+            echo "[Go](https://pkg.go.dev/github.com/qucelerate/ai-gateway/clients/go@${MODULE_TAG#clients/go/}); the C client is attached below."
+            echo
+            echo "**Documentation:** https://gateway.qucelerate.com"
+            echo
             echo "Verify a client download, its signatures and its provenance with"
             echo "\`clients/release/verify.sh <dir>\` (cosign, and the key in \`clients/release/cosign.pub\`)."
           } > "$RUNNER_TEMP/notes.md"
@@ -832,7 +848,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          existing="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${MODULE_TAG}" --jq .object.sha 2>/dev/null || true)"
+          # matching-refs answers [] for a missing tag, and any other failure
+          # stops the step. (`git/ref/...` prints its 404 body on stdout,
+          # which read as an existing tag.)
+          existing="$(gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/${MODULE_TAG}" \
+            --jq ".[] | select(.ref == \"refs/tags/${MODULE_TAG}\") | .object.sha")"
           if [ -z "$existing" ]; then
             gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f "ref=refs/tags/${MODULE_TAG}" -f "sha=${GITHUB_SHA}" >/dev/null
             echo "created ${MODULE_TAG} at ${GITHUB_SHA}"

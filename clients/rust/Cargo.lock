@@ -495,7 +495,7 @@ dependencies = [
 
 [[package]]
 name = "qucelerate-ai-gateway"
-version = "2026.11.0-rc.4"
+version = "2026.11.0"
 dependencies = [
  "bytes",
  "futures-core",

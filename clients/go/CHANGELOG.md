@@ -7,7 +7,7 @@ calendar version (YYYY.M.PATCH, see the repository's CHANGELOG.md); a
 `### Breaking` heading marks a change that needs code changes. The client
 implements the gateway's inference contract 1.0.0.
 
-## 2026.11.0-rc.4
+## 2026.11.0
 
 - Released with the gateway under its calendar version: one tag, `v2026.11.0`,
   releases every component, and every client carries the gateway's version. The API is

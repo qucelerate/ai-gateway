@@ -10,7 +10,7 @@ needs Java 17 or later and depends only on `java.net.http` and Jackson.
 <dependency>
   <groupId>com.qucelerate</groupId>
   <artifactId>qucelerate-ai-gateway</artifactId>
-  <version>2026.11.0-rc.4</version>
+  <version>2026.11.0</version>
 </dependency>
 ```
 
