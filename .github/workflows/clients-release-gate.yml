@@ -58,7 +58,7 @@ jobs:
         client: ${{ fromJSON(inputs.client && format('["{0}"]', inputs.client) || '["rust", "python", "go", "java", "c"]') }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust toolchain
         if: matrix.client == 'rust'
@@ -77,14 +77,14 @@ jobs:
 
       - name: Install Go
         if: matrix.client == 'go'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
           cache: false
 
       - name: Install Java
         if: matrix.client == 'java'
-        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: "17"
@@ -141,7 +141,7 @@ jobs:
         run: clients/release/scan.sh dist
 
       - name: Keep the artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: client-${{ matrix.client }}
           path: dist/

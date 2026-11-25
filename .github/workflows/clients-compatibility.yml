@@ -58,7 +58,7 @@ jobs:
       versions: ${{ steps.list.outputs.versions }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: List the supported gateway versions
         id: list
@@ -86,7 +86,7 @@ jobs:
       ADMIN_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.repository == 'qucelerate/ai-gateway' && 'ai-gateway-admin' || 'gateway-admin' }}:${{ (github.repository == 'qucelerate/ai-gateway' && matrix.gateway == 'dev') && 'latest' || matrix.gateway }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust toolchain
         uses: ./.github/actions/setup-rust
@@ -99,13 +99,13 @@ jobs:
           python-version: "3.13"
 
       - name: Install Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
           cache: false
 
       - name: Install Java
-        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: "17"
@@ -126,7 +126,7 @@ jobs:
         run: clients/release/build-examples.sh "$RUNNER_TEMP/examples" ${CLIENT:+"$CLIENT"}
 
       - name: Sign in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -165,7 +165,7 @@ jobs:
           echo "GATEWAY_UNDER_TEST=$(docker inspect --format '{{index .RepoDigests 0}}' "$GATEWAY_IMAGE")" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.22.2
           cache: npm
@@ -187,7 +187,7 @@ jobs:
 
       - name: Keep the result
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compatibility-${{ matrix.gateway }}
           path: |
