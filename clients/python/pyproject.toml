@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qucelerate-ai-gateway"
-version = "0.2.0"
+version = "2026.11.0-rc.1"
 description = "Client for the QuCelerate AI Gateway inference API (contract 1.0.0)"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ["httpx>=0.27,<1"]
 keywords = ["llm", "ai-gateway", "openai", "inference", "client"]
 authors = [{ name = "QuCelerate", email = "opensource@qucelerate.com" }]
@@ -19,6 +19,10 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Framework :: AsyncIO",
     "Typing :: Typed",
 ]

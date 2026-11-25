@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -214,4 +215,6 @@ def test_conformance(path: Path, mode: str) -> None:
 
 
 def test_version_is_exported() -> None:
-    assert qucelerate_ai_gateway.__version__ == "0.2.0"
+    pyproject = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text(encoding="utf-8")
+    declared = re.search(r'(?m)^version = "([^"]+)"', pyproject)
+    assert declared and qucelerate_ai_gateway.__version__ == declared.group(1)

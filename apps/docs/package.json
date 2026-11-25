@@ -1,5 +1,6 @@
 {
   "name": "@gateway/docs",
+  "version": "2026.11.0-rc.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,7 +17,7 @@
     "@axe-core/playwright": "4.14.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
-    "playwright": "1.64.0",
+    "playwright": "1.65.1",
     "vitepress": "1.6.4"
   },
   "overrides": {

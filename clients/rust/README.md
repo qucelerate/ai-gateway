@@ -6,8 +6,13 @@ transport wrapper; authorization, budgets, routing, and settlement stay on
 the gateway.
 
 ```sh
-cargo add qucelerate-ai-gateway
+cargo add qucelerate-ai-gateway@=2026.11.0-rc.1
 ```
+
+The client carries the gateway's calendar version (`YYYY.M.PATCH`). Cargo
+treats every release of a year as compatible with the others, so pin the
+exact version (`=`) and move it on purpose, after reading the release
+notes' *Breaking* section.
 
 ```rust
 use futures_util::StreamExt;

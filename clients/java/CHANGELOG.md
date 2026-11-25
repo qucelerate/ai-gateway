@@ -2,8 +2,18 @@
 
 All notable changes to this client. Each release has a `## <version>` section,
 which becomes its GitHub release notes (`clients/release/changelog.py`).
-Versions follow semantic versioning; the client implements the gateway's
-inference contract 1.0.0.
+Since 2026.11.0 the client is released with the gateway, under the same
+calendar version (YYYY.M.PATCH, see the repository's CHANGELOG.md); a
+`### Breaking` heading marks a change that needs code changes. The client
+implements the gateway's inference contract 1.0.0.
+
+## 2026.11.0-rc.1
+
+- Released with the gateway under its calendar version: one tag, `v2026.11.0`,
+  releases every component, and every client carries the gateway's version. The API is
+  that of 0.2.0; nothing was removed or changed.
+- `com.qucelerate:qucelerate-ai-gateway:2026.11.0`.
+- jackson-databind 2.23.0.
 
 ## 0.2.0
 

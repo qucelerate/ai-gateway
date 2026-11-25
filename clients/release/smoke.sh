@@ -51,7 +51,10 @@ EOF
       cd "$work/app"
       export GOFLAGS=-mod=mod GOWORK=off
       go mod init example.com/smoke >/dev/null 2>&1
-      go mod edit -require="github.com/qucelerate/ai-gateway/clients/go@v$version" \
+      # The replace points at the extracted release, so the required version
+      # is only a placeholder (the module's own version is v0.YYYYMM.PATCH,
+      # which the release workflow tags).
+      go mod edit -require="github.com/qucelerate/ai-gateway/clients/go@v0.0.0" \
         -replace="github.com/qucelerate/ai-gateway/clients/go=$work/qucelerate-ai-gateway-go-$version"
       go run .
     )

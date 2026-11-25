@@ -34,7 +34,7 @@ import (
 )
 
 // Version is this client's version.
-const Version = "0.2.0"
+const Version = "2026.11.0-rc.1"
 
 const (
 	chatPath          = "/api/inference/v1/chat/completions"

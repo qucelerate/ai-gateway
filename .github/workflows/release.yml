@@ -1,0 +1,878 @@
+name: Release
+
+# One tag releases everything, from the public repository,
+# qucelerate/ai-gateway: v<version>, a calendar version YYYY.M.PATCH (for
+# example v2026.11.0) or a pre-release YYYY.M.PATCH-rc.N, which every
+# component declares (clients/release/release.py).
+#
+#   version      the tag names the version every component declares, each
+#                changelog has its notes, and the commit is on main
+#   checks       this commit's Rust CI and Admin frontend CI push runs pass
+#   build        without publishing anything: the gateway, admin and docs
+#                images pushed to GHCR by digest only (no tag), and every
+#                client's release artifacts (clients-release-gate.yml)
+#   compatibility  every client's example against the candidate gateway
+#                and admin images (clients-compatibility.yml)
+#   publish      only when all of the above pass:
+#                  images     tagged X.Y.Z (a full release also YYYY.M and
+#                             latest), signed with cosign keyless by digest
+#                  chart      oci://ghcr.io/qucelerate/charts/ai-gateway, signed
+#                  release    one GitHub release v<version>: every client's
+#                             artifacts, the compatibility result, SHA256SUMS,
+#                             signed with the clients' cosign key
+#                  registries PyPI, crates.io, Maven Central, the Go module
+#                             proxy (tag clients/go/v0.YYYYMM.PATCH)
+#                  docs site  GitHub Pages (gateway.qucelerate.com)
+#
+# Every publish step skips what already exists, so re-running a failed run
+# (or the whole workflow) finishes a partial release instead of failing on
+# it: docs/release-process.md (private) and clients/release/README.md.
+#
+# The same workflow files run in the private development repository, where
+# every job here is skipped. Everything runs on GitHub's hosted runners.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/qucelerate
+  # cosign for the client artifacts, pinned by version and checksum (its
+  # release's checksums file).
+  COSIGN_VERSION: v3.1.4
+  COSIGN_SHA256: 424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa
+
+jobs:
+  # --- version ------------------------------------------------------------
+
+  version:
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+      image_tags: ${{ steps.check.outputs.image_tags }}
+      go_module_tag: ${{ steps.check.outputs.go_module_tag }}
+      python_version: ${{ steps.check.outputs.python_version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the tag against every version and changelog
+        id: check
+        run: |
+          set -o pipefail
+          python3 -I clients/release/release.py check "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Check the tagged commit is on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main ||
+            { echo "::error::$GITHUB_REF_NAME tags $GITHUB_SHA, which is not on main"; exit 1; }
+
+  # The newest push run of each check for this commit must pass. A tag push
+  # always starts both (path filters don't apply to tags), so a run that
+  # never appears is an error, not a skip: wait up to 10 minutes for it to
+  # be created.
+  checks:
+    needs: version
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      actions: read
+    steps:
+      - name: Wait for the commit's checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -o pipefail
+          for workflow in "Rust CI" "Admin frontend CI"; do
+            waited=0
+            while :; do
+              run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100" \
+                --jq "[.workflow_runs[] | select(.name == \"${workflow}\" and (.event == \"push\" or .event == \"workflow_dispatch\"))] | sort_by(.created_at) | last")
+              if [ -z "$run" ] || [ "$run" = null ]; then
+                if [ "$waited" -ge 600 ]; then
+                  echo "::error::${workflow} has no run for ${SHA} after 10 minutes"
+                  exit 1
+                fi
+                sleep 30; waited=$((waited + 30))
+                continue
+              fi
+              if [ "$(jq -r .status <<<"$run")" = completed ]; then
+                conclusion=$(jq -r .conclusion <<<"$run")
+                if [ "$conclusion" = success ]; then
+                  echo "${workflow}: passed"
+                  break
+                fi
+                echo "::error::${workflow} ${conclusion} for ${SHA}: $(jq -r .html_url <<<"$run")"
+                exit 1
+              fi
+              sleep 30
+            done
+          done
+
+  # --- build, without publishing -------------------------------------------
+
+  # The documentation site, built without any write permission or OIDC
+  # token: its npm install runs third-party code, which must not reach the
+  # registry token or a signing identity. The docs image and the Pages
+  # deployment take the result.
+  docs-site:
+    needs: version
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/docs
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The site's "Last updated" dates come from git history.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: apps/docs/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Schemas, examples, version links and the generated error reference.
+      - name: Check the contract
+        run: npm run check:contract
+
+      - name: Build the documentation site
+        run: npm run build
+
+      # The build's buildEnd hook writes the AI-readable files.
+      - name: Check the published extras
+        run: |
+          for file in llms.txt llms-full.txt index.md install/agents.md support/errors.md sitemap.xml; do
+            test -s ".vitepress/dist/$file" || { echo "::error::missing $file"; exit 1; }
+          done
+          grep -qx 'gateway.qucelerate.com' .vitepress/dist/CNAME \
+            || { echo "::error::CNAME does not name gateway.qucelerate.com"; exit 1; }
+
+      - name: Keep the site for the image
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs-site
+          path: apps/docs/.vitepress/dist
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Keep the site for GitHub Pages
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: apps/docs/.vitepress/dist
+          retention-days: 7
+
+  # Each image is pushed by digest only: nothing is tagged until the publish
+  # phase, so a failed release leaves no tag behind. When the version's tag
+  # already exists (a re-run after the images were published), its digest
+  # is used as it is, so the tag never moves.
+  images:
+    needs: [version, docs-site]
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ai-gateway
+            dockerfile: Dockerfile
+            context: .
+            title: QuCelerate AI Gateway
+          - image: ai-gateway-admin
+            dockerfile: docker/admin/Dockerfile
+            context: .
+            title: QuCelerate AI Gateway admin UI
+          - image: ai-gateway-docs
+            dockerfile: docker/docs/Dockerfile
+            context: docker/docs
+            title: QuCelerate AI Gateway documentation
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      IMAGE: ghcr.io/qucelerate/${{ matrix.image }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Look for an image already published for this version
+        id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          digest=$(scripts/registry-tag.sh digest "$IMAGE" "$VERSION")
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          [ -z "$digest" ] || echo "${IMAGE}:${VERSION} exists (${digest}): not rebuilt"
+
+      # Built by the docs-site job and passed as the `site` build context.
+      - name: Take the documentation site
+        if: matrix.image == 'ai-gateway-docs' && steps.published.outputs.digest == ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: docs-site
+          path: apps/docs/.vitepress/dist
+
+      # ECR Public throttles GitHub's runners: use the GHCR copies of the
+      # base images the private repository keeps, where they can be read
+      # (lookup only; nothing is copied from here), else the ECR pins.
+      - name: Base images
+        id: base
+        if: steps.published.outputs.digest == ''
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          MIRROR_LOOKUP_ONLY: "1"
+        run: |
+          scripts/mirror-base-images.sh "${REGISTRY}/mirror" > "$RUNNER_TEMP/mirror.env" || true
+          {
+            echo "build-args<<ARGS"
+            while IFS='=' read -r name value; do
+              if [ -n "$value" ] && grep -q "^ARG ${name}=" "$DOCKERFILE"; then
+                echo "${name}=${value}"
+              fi
+            done < "$RUNNER_TEMP/mirror.env"
+            echo "ARGS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        if: steps.published.outputs.digest == ''
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Sign in to GHCR
+        if: steps.published.outputs.digest == ''
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push by digest
+        id: build
+        if: steps.published.outputs.digest == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          build-contexts: ${{ matrix.image == 'ai-gateway-docs' && 'site=apps/docs/.vitepress/dist' || '' }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: ${{ steps.base.outputs.build-args }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.title }}
+            org.opencontainers.image.vendor=QuCelerate
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.url=https://gateway.qucelerate.com
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Record the candidate's digest
+        env:
+          DIGEST: ${{ steps.published.outputs.digest || steps.build.outputs.digest }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no digest for ${IMAGE}"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/digest"
+          echo "${IMAGE}@${DIGEST}" | tee "$RUNNER_TEMP/digest/${{ matrix.image }}"
+
+      - name: Keep the digest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.image }}
+          path: ${{ runner.temp }}/digest/${{ matrix.image }}
+          retention-days: 7
+          if-no-files-found: error
+
+  # The three candidates as job outputs, for the compatibility run's inputs
+  # and the publish jobs.
+  candidates:
+    needs: images
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      ai-gateway: ${{ steps.refs.outputs.ai-gateway }}
+      ai-gateway-admin: ${{ steps.refs.outputs.ai-gateway-admin }}
+      ai-gateway-docs: ${{ steps.refs.outputs.ai-gateway-docs }}
+    steps:
+      - name: Fetch the digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/digest
+
+      - name: Name the candidates
+        id: refs
+        run: |
+          for image in ai-gateway ai-gateway-admin ai-gateway-docs; do
+            ref=$(cat "$RUNNER_TEMP/digest/$image")
+            [[ "$ref" =~ ^ghcr\.io/qucelerate/${image}@sha256:[0-9a-f]{64}$ ]] ||
+              { echo "::error::bad candidate for ${image}: ${ref}"; exit 1; }
+            echo "${image}=${ref}" | tee -a "$GITHUB_OUTPUT"
+          done
+
+  # Every client's artifacts, built on a fresh hosted runner: reproducible,
+  # installed into a clean project, scanned for secrets.
+  gate:
+    needs: version
+    if: github.repository == 'qucelerate/ai-gateway'
+    uses: ./.github/workflows/clients-release-gate.yml
+    with:
+      runner: '"ubuntu-24.04"'
+
+  # --- compatibility --------------------------------------------------------
+
+  compatibility:
+    needs: [version, candidates]
+    if: github.repository == 'qucelerate/ai-gateway'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/clients-compatibility.yml
+    with:
+      runner: '"ubuntu-24.04"'
+      gateway_image: ${{ needs.candidates.outputs.ai-gateway }}
+      admin_image: ${{ needs.candidates.outputs.ai-gateway-admin }}
+
+  # --- publish --------------------------------------------------------------
+
+  publish-images:
+    needs: [version, checks, candidates, gate, compatibility]
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      # Keyless signing: cosign exchanges the job's OIDC token for a
+      # short-lived Sigstore certificate.
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ai-gateway, ai-gateway-admin, ai-gateway-docs]
+    env:
+      CANDIDATE: ${{ needs.candidates.outputs[matrix.image] }}
+      TAGS: ${{ needs.version.outputs.image_tags }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Tag the candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # shellcheck disable=SC2086 # TAGS is a list
+          scripts/registry-tag.sh tag "${CANDIDATE%@*}" "${CANDIDATE#*@}" $TAGS
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+
+      - name: Sign in to GHCR for cosign
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # By digest, so the signature covers exactly what was tested, under
+      # every tag. Skipped when this workflow, for this tag, already signed it.
+      - name: Sign the image (keyless)
+        run: |
+          identity="${GITHUB_SERVER_URL}/${GITHUB_WORKFLOW_REF}"
+          if cosign verify --certificate-identity "$identity" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "$CANDIDATE" >/dev/null 2>&1; then
+            echo "${CANDIDATE} is already signed by ${identity}"
+          else
+            cosign sign --yes "$CANDIDATE"
+          fi
+          echo "${CANDIDATE} (tags: ${TAGS})" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  chart:
+    needs: [version, publish-images]
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      CHART: ghcr.io/qucelerate/charts/ai-gateway
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Helm
+        uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: v4.3.2
+
+      # A chart version, once pushed, is never pushed again (a re-run signs
+      # the one there).
+      - name: Package and push the chart
+        id: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          digest=$(scripts/registry-tag.sh digest "$CHART" "$VERSION")
+          if [ -n "$digest" ]; then
+            echo "chart ${VERSION} exists (${digest}): not pushed again"
+          else
+            helm lint --strict deploy/helm/ai-gateway --set host=gateway.example.com
+            helm package deploy/helm/ai-gateway --version "$VERSION" --app-version "$VERSION" \
+              --destination "$RUNNER_TEMP/chart"
+            echo "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+            helm push "$RUNNER_TEMP/chart/ai-gateway-${VERSION}.tgz" "oci://${CHART%/*}" 2>&1 | tee "$RUNNER_TEMP/push.log"
+            digest=$(grep -oE 'sha256:[0-9a-f]{64}' "$RUNNER_TEMP/push.log" | tail -1)
+          fi
+          [ -n "$digest" ] || { echo "::error::no digest for chart ${VERSION}"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+
+      - name: Sign in to GHCR for cosign
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Sign the chart (keyless)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          identity="${GITHUB_SERVER_URL}/${GITHUB_WORKFLOW_REF}"
+          if cosign verify --certificate-identity "$identity" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "${CHART}@${DIGEST}" >/dev/null 2>&1; then
+            echo "chart ${VERSION} is already signed by ${identity}"
+          else
+            cosign sign --yes "${CHART}@${DIGEST}"
+          fi
+          echo "oci://${CHART} --version ${VERSION} (${DIGEST})" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # One GitHub release for the tag: every client's artifacts, the
+  # compatibility result, SHA256SUMS, each artifact's provenance and the
+  # SHA256SUMS signature, made with the clients' cosign key and checked
+  # against clients/release/cosign.pub before anything reaches a registry.
+  github-release:
+    needs: [version, checks, gate, compatibility]
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Holds COSIGN_PRIVATE_KEY and COSIGN_PASSWORD; deploys only from v* tags.
+    environment: client-release
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fetch the gate's artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: client-*
+          merge-multiple: true
+          path: dist
+
+      - name: Fetch the compatibility result
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: compatibility-*
+          path: ${{ runner.temp }}/compatibility
+
+      # Every client, at this version, passed against the candidate images.
+      - name: Check and attach the compatibility result
+        run: |
+          echo candidate > "$RUNNER_TEMP/gateways.txt"
+          for client in rust python go java c; do
+            python3 -I clients/release/compatibility.py "$client" "$VERSION" \
+              "$RUNNER_TEMP/compatibility" "$RUNNER_TEMP/gateways.txt" dist
+          done
+          mv dist/compatibility-candidate.json "dist/compatibility-${VERSION}.json"
+
+      # The report carries the time it was tested, so a re-run's differs.
+      # Completing a release that already has one keeps the published report
+      # (this run's has just passed the same check), so the client packages,
+      # which are reproducible, are what SHA256SUMS compares.
+      - name: Keep a compatibility result already published
+        run: |
+          set -o pipefail
+          report="compatibility-${VERSION}.json"
+          if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' 2>/dev/null | grep -qxF "$report"; then
+            gh release download "$GITHUB_REF_NAME" --pattern "$report" --dir "$RUNNER_TEMP/published-report"
+            mv "$RUNNER_TEMP/published-report/$report" "dist/$report"
+            echo "kept the published $report"
+          fi
+
+      - name: Write the checksums
+        working-directory: dist
+        # The glob expands before the redirect creates SHA256SUMS.
+        run: sha256sum -- * > SHA256SUMS && cat SHA256SUMS
+
+      - name: Install cosign
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cosign" \
+            "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+          echo "$COSIGN_SHA256  $RUNNER_TEMP/cosign" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/cosign"
+          echo "COSIGN=$RUNNER_TEMP/cosign" >> "$GITHUB_ENV"
+
+      - name: Sign the artifacts and their provenance
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: clients/release/sign.sh dist
+
+      # Against the committed public key: a key that does not match fails
+      # here, before anything reaches a registry.
+      - name: Verify the release as a user would
+        run: clients/release/verify.sh dist clients/release/cosign.pub
+
+      - name: Write the release notes
+        run: |
+          {
+            python3 -I clients/release/release.py notes "$VERSION"
+            echo
+            echo "---"
+            echo
+            echo "Images: \`ghcr.io/qucelerate/ai-gateway:${VERSION}\`, \`ai-gateway-admin\`, \`ai-gateway-docs\`;"
+            echo "chart: \`oci://ghcr.io/qucelerate/charts/ai-gateway --version ${VERSION}\`, each signed with cosign (keyless)."
+            echo "Verify a client download, its signatures and its provenance with"
+            echo "\`clients/release/verify.sh <dir>\` (cosign, and the key in \`clients/release/cosign.pub\`)."
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      # A re-run finds the release: it uploads only the files it lacks, and
+      # only if the release's SHA256SUMS is this run's (the artifacts are
+      # reproducible, so a rebuild matches).
+      - name: Create the GitHub release, or complete it
+        run: |
+          set -o pipefail
+          if ! assets=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' 2>/dev/null); then
+            flags=()
+            if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); else flags+=(--latest); fi
+            gh release create "$GITHUB_REF_NAME" --verify-tag "${flags[@]}" \
+              --title "QuCelerate AI Gateway ${VERSION}" --notes-file "$RUNNER_TEMP/notes.md" dist/*
+            exit 0
+          fi
+          echo "release $GITHUB_REF_NAME exists; completing it"
+          if grep -qx SHA256SUMS <<<"$assets"; then
+            mkdir -p "$RUNNER_TEMP/published"
+            gh release download "$GITHUB_REF_NAME" --pattern SHA256SUMS --dir "$RUNNER_TEMP/published"
+            cmp "$RUNNER_TEMP/published/SHA256SUMS" dist/SHA256SUMS ||
+              { echo "::error::the release's SHA256SUMS differs from this run's; delete the release's assets to republish"; exit 1; }
+          fi
+          for file in dist/*; do
+            name=$(basename "$file")
+            if grep -qxF -- "$name" <<<"$assets"; then
+              echo "has $name"
+            else
+              gh release upload "$GITHUB_REF_NAME" "$file"
+              echo "uploaded $name"
+            fi
+          done
+
+      - name: Verify the published release
+        run: |
+          mkdir -p "$RUNNER_TEMP/download"
+          gh release download "$GITHUB_REF_NAME" --dir "$RUNNER_TEMP/download"
+          clients/release/verify.sh "$RUNNER_TEMP/download" clients/release/cosign.pub
+
+  # crates.io trusted publishing: the job's OIDC token is exchanged for a
+  # short-lived publish token. The environment secret CARGO_REGISTRY_TOKEN,
+  # when set, is used instead (only needed before trusted publishing is
+  # configured for the crate).
+  crates-io:
+    needs: [version, github-release]
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: crates-io
+      url: https://crates.io/crates/qucelerate-ai-gateway/${{ needs.version.outputs.version }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      FALLBACK_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - name: Look for the version on crates.io
+        id: exists
+        run: |
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -A 'ai-gateway-release (github.com/qucelerate/ai-gateway)' \
+            "https://crates.io/api/v1/crates/qucelerate-ai-gateway/${VERSION}")
+          case "$status" in
+            200) echo "published=true" >> "$GITHUB_OUTPUT"; echo "qucelerate-ai-gateway ${VERSION} is on crates.io" ;;
+            404) echo "published=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::crates.io answered ${status}"; exit 1 ;;
+          esac
+
+      - name: Check out repository
+        if: steps.exists.outputs.published == 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        if: steps.exists.outputs.published == 'false'
+        uses: ./.github/actions/setup-rust
+        with:
+          toolchain: "stable"
+
+      - name: Authenticate with crates.io (trusted publishing)
+        id: auth
+        if: steps.exists.outputs.published == 'false' && env.FALLBACK_TOKEN == ''
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+
+      - name: Publish the crate
+        if: steps.exists.outputs.published == 'false'
+        working-directory: clients/rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || env.FALLBACK_TOKEN }}
+        run: cargo publish --locked
+
+  # PyPI trusted publishing (no token): uploads the wheel and sdist the gate
+  # built, which the GitHub release also holds.
+  pypi:
+    needs: [version, github-release]
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/project/qucelerate-ai-gateway/${{ needs.version.outputs.python_version }}/
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHON_VERSION: ${{ needs.version.outputs.python_version }}
+    steps:
+      - name: Look for the version on PyPI
+        id: exists
+        run: |
+          set -o pipefail
+          status=$(curl -sS -o "$RUNNER_TEMP/pypi.json" -w '%{http_code}' \
+            "https://pypi.org/pypi/qucelerate-ai-gateway/${PYTHON_VERSION}/json")
+          case "$status" in
+            200)
+              files=$(jq '.urls | length' "$RUNNER_TEMP/pypi.json")
+              echo "PyPI has ${files} file(s) for ${PYTHON_VERSION}"
+              echo "published=$([ "$files" -ge 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT" ;;
+            404) echo "published=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::PyPI answered ${status}"; exit 1 ;;
+          esac
+
+      - name: Fetch the gate's artifacts
+        if: steps.exists.outputs.published == 'false'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: client-python
+          path: dist
+
+      # Python spells a pre-release its own way in file names (2026.11.0-rc.1
+      # becomes 2026.11.0rc1): the version job derived that spelling.
+      - name: Check there is exactly one wheel and one sdist, of this version
+        if: steps.exists.outputs.published == 'false'
+        run: |
+          ls -l dist
+          test "$(find dist -type f | wc -l)" = 2
+          test -f "dist/qucelerate_ai_gateway-${PYTHON_VERSION}-py3-none-any.whl"
+          test -f "dist/qucelerate_ai_gateway-${PYTHON_VERSION}.tar.gz"
+
+      - name: Publish to PyPI
+        if: steps.exists.outputs.published == 'false'
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: dist/
+          # A re-run after one of the two files was uploaded.
+          skip-existing: true
+
+  # Maven Central through the Central Portal: the `release` profile of
+  # clients/java/pom.xml adds the javadoc jar, signs every file with GPG and
+  # uploads the bundle, then waits until it is published. The jars are
+  # rebuilt here from the tagged commit, with the gate's timestamp, so their
+  # bytes match the GitHub release's.
+  maven-central:
+    needs: [version, github-release]
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    # Central validates and publishes the bundle before the plugin returns.
+    timeout-minutes: 60
+    environment: maven-central
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: clients/java
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Published: the pom is on repo1 (which can lag the publication by
+      # some minutes), or the Central Portal says so.
+      - name: Look for the version on Maven Central
+        id: exists
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        run: |
+          set -o pipefail
+          pom="https://repo1.maven.org/maven2/com/qucelerate/qucelerate-ai-gateway/${VERSION}/qucelerate-ai-gateway-${VERSION}.pom"
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -I "$pom")
+          if [ "$status" = 200 ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"; echo "$pom exists"; exit 0
+          fi
+          bearer=$(printf '%s:%s' "$MAVEN_CENTRAL_USERNAME" "$MAVEN_CENTRAL_PASSWORD" | base64 -w0)
+          published=$(curl -fsS -H "Authorization: Bearer ${bearer}" \
+            "https://central.sonatype.com/api/v1/publisher/published?namespace=com.qucelerate&name=qucelerate-ai-gateway&version=${VERSION}" |
+            jq -r .published)
+          echo "Central Portal: published=${published}"
+          echo "published=$([ "$published" = true ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      # Writes settings.xml with the `central` server (credentials read from
+      # the two environment variables below) and imports the signing key.
+      - name: Install Java, the Central credentials and the signing key
+        if: steps.exists.outputs.published == 'false'
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Install Maven
+        if: steps.exists.outputs.published == 'false'
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: mvn=maven
+
+      - name: Publish to Maven Central
+        if: steps.exists.outputs.published == 'false'
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          epoch="$(git log -1 --format=%ct)"
+          mvn -B -ntp -P release -DskipTests -Dproject.build.outputTimestamp="$epoch" deploy
+
+  # The Go module proxy reads only clients/go/v<semver> tags as versions of
+  # this module (it lives in clients/go), and a module version of 2 or more
+  # would need a /v2 path suffix: the version job derived the tag
+  # clients/go/v0.YYYYMM.PATCH. It is made on the tagged commit, then the
+  # proxy is asked for the version, which makes it fetch and keep it (and
+  # pkg.go.dev list it).
+  go-proxy:
+    needs: [version, github-release]
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      MODULE_TAG: ${{ needs.version.outputs.go_module_tag }}
+      MODULE: github.com/qucelerate/ai-gateway/clients/go
+    steps:
+      - name: Tag the module version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${MODULE_TAG}" --jq .object.sha 2>/dev/null || true)"
+          if [ -z "$existing" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f "ref=refs/tags/${MODULE_TAG}" -f "sha=${GITHUB_SHA}" >/dev/null
+            echo "created ${MODULE_TAG} at ${GITHUB_SHA}"
+          elif [ "$existing" = "$GITHUB_SHA" ]; then
+            echo "${MODULE_TAG} already tags ${GITHUB_SHA}"
+          else
+            echo "::error::${MODULE_TAG} exists and tags ${existing}, not ${GITHUB_SHA}"
+            exit 1
+          fi
+
+      - name: Ask proxy.golang.org for the version
+        run: |
+          version="${MODULE_TAG#clients/go/}"
+          url="https://proxy.golang.org/${MODULE}/@v/${version}.info"
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if info="$(curl -fsS "$url")"; then
+              echo "$info"
+              echo "${MODULE}@${version}: ${info}" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "the proxy does not have ${version} yet (attempt ${attempt})"
+            sleep $((attempt * 15))
+          done
+          echo "::error::proxy.golang.org did not serve ${MODULE}@${version}"
+          exit 1
+
+  # The documentation site the docs-site job built and checked, once the
+  # release it documents exists. The repository's Pages source must be
+  # "GitHub Actions". A re-run deploys it again.
+  # The published site follows full releases only: a pre-release leaves it
+  # on the last release.
+  pages:
+    needs: [version, docs-site, publish-images, chart, github-release]
+    if: github.repository == 'qucelerate/ai-gateway' && needs.version.outputs.prerelease == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

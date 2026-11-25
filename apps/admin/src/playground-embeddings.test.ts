@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogDeployment, CatalogRoute } from './api';
+import { CLIENT_VERSION } from './client-versions';
 import { tokenize } from './code-highlight';
 import { cosine, embeddingInputs, embeddingLanguages, embeddingModels, embeddingSnippet, MAX_EMBEDDING_INPUTS } from './playground-embeddings';
 
@@ -51,5 +52,10 @@ describe('playground embeddings', () => {
     expect(embeddingSnippet('python', 'client', 'embed', [], 'https://gw.example').code).toContain('"The quick brown fox"');
     expect(embeddingSnippet('curl', 'client', 'embed', ['a'], 'https://gw.example').note).toContain('curl is raw HTTP');
     expect(embeddingSnippet('curl', 'raw', 'embed', ['it\'s'], 'https://gw.example').code).toContain(`'\\''`);
+  });
+
+  it('installs the Python client of this release', () => {
+    expect(embeddingSnippet('python', 'client', 'embed', ['a'], 'https://gw.example').setup)
+      .toBe(`pip install qucelerate-ai-gateway==${CLIENT_VERSION}  # Python 3.10+`);
   });
 });

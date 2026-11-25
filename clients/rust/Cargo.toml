@@ -1,6 +1,6 @@
 [package]
 name = "qucelerate-ai-gateway"
-version = "0.2.0"
+version = "2026.11.0-rc.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Client for the QuCelerate AI Gateway inference API (contract 1.0.0)"
@@ -12,7 +12,7 @@ homepage = "https://gateway.qucelerate.com"
 documentation = "https://docs.rs/qucelerate-ai-gateway"
 keywords = ["llm", "ai-gateway", "openai", "inference", "client"]
 categories = ["api-bindings", "web-programming::http-client", "asynchronous"]
-# Published to crates.io by .github/workflows/release-clients.yml, from the
+# Published to crates.io by .github/workflows/release.yml, from the
 # public repository only (clients/release/README.md, *Registries*).
 publish = true
 # Only what builds and documents the crate: the tests read

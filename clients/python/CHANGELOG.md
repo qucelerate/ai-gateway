@@ -2,8 +2,25 @@
 
 All notable changes to this client. Each release has a `## <version>` section,
 which becomes its GitHub release notes (`clients/release/changelog.py`).
-Versions follow semantic versioning; the client implements the gateway's
-inference contract 1.0.0.
+Since 2026.11.0 the client is released with the gateway, under the same
+calendar version (YYYY.M.PATCH, see the repository's CHANGELOG.md); a
+`### Breaking` heading marks a change that needs code changes. The client
+implements the gateway's inference contract 1.0.0.
+
+## 2026.11.0-rc.1
+
+### Breaking
+
+- Python 3.10 or later (`requires-python = ">=3.10"`): Python 3.9 reached its end of life
+  in October 2025. Tested on 3.10 and 3.13.
+
+### Changed
+
+- Released with the gateway under its calendar version: one tag, `v2026.11.0`,
+  releases every component, and every client carries the gateway's version. The API is
+  that of 0.2.0; nothing was removed or changed.
+- Supersedes 0.2.0 on PyPI: 2026.11.0 sorts after it, so `pip install --upgrade
+  qucelerate-ai-gateway` moves to it, and `qucelerate-ai-gateway>=0.2` accepts it.
 
 ## 0.2.0
 

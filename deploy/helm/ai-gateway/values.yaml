@@ -3,7 +3,7 @@
 # as the API (its cookie sessions and CSRF checks require it). See README.md
 # and https://gateway.qucelerate.com/operations/.
 
-# The public images, published by each release (release-images workflow),
+# The public images, published by each release (the release workflow, release.yml),
 # signed with cosign (keyless) and carrying an SBOM and provenance. An empty
 # tag means the chart's appVersion: the release this chart came with.
 image:

@@ -125,7 +125,7 @@ docker compose --profile app exec gateway gateway doctor
 **Expected:** every check line starts with `[ok]`, `[warn]` or `[skip]`, and the last line is `result: ok` or `result: warn`. A `hint:` line under a check says what to do; skipped checks can have one too. This is a real run, against a test database that already holds stored provider credentials (a fresh install shows `no stored credentials`, and the role and PostgreSQL version are yours):
 
 ```text
-gateway doctor (gateway 0.1.0)
+gateway doctor (gateway 2026.11.0)
 
 [ok]   config.required             set: DATABASE_URL, GATEWAY_PROFILE, API_KEY_PEPPER
 [ok]   config.load                 configuration loads (profile all-in-one)

@@ -42,10 +42,14 @@ def version(client: str) -> str:
         match = re.search(pattern, (CLIENTS / file).read_text(encoding="utf-8"))
         if not match:
             sys.exit(f"{file}: no version declaration matching {pattern!r}")
-        found.append((file, ".".join(match.groups())))
-    versions = {value for _, value in found}
-    if len(versions) != 1:
-        sys.exit(f"{client}: versions disagree: " + ", ".join(f"{f}={v}" for f, v in found))
+        # A declaration of the three numbers alone (the C header's MAJOR,
+        # MINOR and PATCH macros) carries no pre-release suffix.
+        found.append((file, ".".join(match.groups()), len(match.groups()) > 1))
+    versions = {value for _, value, partial in found if not partial}
+    disagree = len(versions) != 1 or any(
+        partial and value != next(iter(versions)).split("-", 1)[0] for _, value, partial in found)
+    if disagree:
+        sys.exit(f"{client}: versions disagree: " + ", ".join(f"{f}={v}" for f, v, _ in found))
     (value,) = versions
     if not SEMVER.match(value):
         sys.exit(f"{client}: {value!r} is not a semantic version")

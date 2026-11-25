@@ -2,6 +2,7 @@
 // call to the public embeddings API (with the same key rules as chat: an
 // ordinary `gw_` key, never the admin session), and the code that makes it.
 
+import { CLIENT_VERSION } from './client-versions';
 import type { CatalogDeployment, CatalogPrice, CatalogRoute } from './api';
 import { InferenceError, type Usage } from './playground-api';
 import type { CodeStyle, Language, Snippet } from './playground-code';
@@ -158,7 +159,7 @@ export function embeddingSnippet(language: Language, style: CodeStyle, model: st
   if (language === 'python' && style === 'client') {
     return {
       language, style, syntax: 'python',
-      setup: `pip install qucelerate-ai-gateway  # Python 3.9+`,
+      setup: `pip install qucelerate-ai-gateway==${CLIENT_VERSION}  # Python 3.10+`,
       code: [
         'import os',
         '',

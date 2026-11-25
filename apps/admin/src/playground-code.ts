@@ -7,6 +7,8 @@
 // prompt for its language, so any text typed in the playground yields code
 // that compiles and sends exactly that text.
 
+import { CLIENT_VERSION, GO_MODULE_VERSION } from './client-versions';
+
 export type ChatRole = 'system' | 'developer' | 'user' | 'assistant' | 'tool';
 /** A call the model made (D-032), as a response returns it. */
 export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
@@ -216,7 +218,7 @@ function pyKwargs(request: PlaygroundRequest): string {
 
 const python: Record<CodeStyle, Generator> = {
   client: (request, baseUrl, stream) => ({
-    setup: `pip install qucelerate-ai-gateway  # Python 3.9+`,
+    setup: `pip install qucelerate-ai-gateway==${CLIENT_VERSION}  # Python 3.10+`,
     code: [
       'import os',
       '',
@@ -440,7 +442,7 @@ const rust: Record<CodeStyle, Generator> = {
       setup: [
         '# Cargo.toml',
         '[dependencies]',
-        'qucelerate-ai-gateway = "0.2"',
+        `qucelerate-ai-gateway = "=${CLIENT_VERSION}"`,
         'tokio = { version = "1", features = ["macros", "rt-multi-thread"] }',
         ...(stream ? ['futures-util = "0.3"'] : []),
         ...(request.tools?.some(tool => tool.function.parameters !== undefined) ? ['serde_json = "1"'] : []),
@@ -614,7 +616,7 @@ function goChoice(choice: ToolChoice): string {
 
 const go: Record<CodeStyle, Generator> = {
   client: (request, baseUrl, stream) => ({
-    setup: 'go get github.com/qucelerate/ai-gateway/clients/go  # Go 1.22+',
+    setup: `go get github.com/qucelerate/ai-gateway/clients/go@${GO_MODULE_VERSION}  # Go 1.22+`,
     code: [
       'package main',
       '',
@@ -840,7 +842,7 @@ const java: Record<CodeStyle, Generator> = {
       ...(request.tool_choice !== undefined ? ['ToolChoice'] : []),
     ];
     return {
-      setup: `Java 17+. Depend on com.qucelerate:qucelerate-ai-gateway:0.2.0 (Maven Central).`,
+      setup: `Java 17+. Depend on com.qucelerate:qucelerate-ai-gateway:${CLIENT_VERSION} (Maven Central).`,
       code: [
         'import com.qucelerate.aigateway.ChatRequest;',
         ...(stream ? ['import com.qucelerate.aigateway.ChatStream;'] : ['import com.qucelerate.aigateway.ChatResponse;']),

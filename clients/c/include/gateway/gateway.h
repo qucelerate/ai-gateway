@@ -60,11 +60,11 @@ extern "C" {
 #  define GW_API
 #endif
 
-#define GW_VERSION_MAJOR 0
-#define GW_VERSION_MINOR 2
+#define GW_VERSION_MAJOR 2026
+#define GW_VERSION_MINOR 11
 #define GW_VERSION_PATCH 0
 /* The same version as a string; CMakeLists.txt reads the version from here. */
-#define GW_VERSION_STRING "0.2.0"
+#define GW_VERSION_STRING "2026.11.0-rc.1"
 /* Defined when this header declares the files and batches calls. */
 #define GW_HAS_BATCHES 1
 

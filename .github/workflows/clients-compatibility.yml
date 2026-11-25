@@ -6,8 +6,9 @@ name: Client compatibility
 # Bedrock faked. tests/functional/specs/clients.spec.ts provisions a tenant
 # through the admin UI and runs each example's chat and streamed call; the
 # result, naming every client and gateway version, is kept as an artifact.
-# The release workflow (clients-release.yml) calls this one for the client
-# it releases and attaches the results.
+# The release workflow (release.yml) calls this one with the candidate
+# images it built (gateway_image, admin_image: tested in place of the
+# gateways.txt list) and attaches the result to the release.
 on:
   push:
     branches: [main]
@@ -40,7 +41,19 @@ on:
       runner:
         description: >
           The runner, as JSON (a label or a list of labels); default the
-          CI_RUNNER variable, else GitHub's ubuntu-latest.
+          CI_RUNNER variable, else GitHub's ubuntu-24.04.
+        type: string
+        default: ""
+      gateway_image:
+        description: >
+          A gateway image to test instead of the gateways.txt versions
+          (with admin_image), as a full reference such as
+          ghcr.io/qucelerate/ai-gateway@sha256:...; the result is the
+          compatibility-candidate artifact.
+        type: string
+        default: ""
+      admin_image:
+        description: The admin UI image to test with gateway_image.
         type: string
         default: ""
 
@@ -53,22 +66,30 @@ concurrency:
 
 jobs:
   gateways:
-    runs-on: ${{ inputs.runner && fromJSON(inputs.runner) || vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner && fromJSON(inputs.runner) || vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-24.04' }}
     outputs:
       versions: ${{ steps.list.outputs.versions }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: List the supported gateway versions
         id: list
+        env:
+          CANDIDATE: ${{ inputs.gateway_image }}
+          CANDIDATE_ADMIN: ${{ inputs.admin_image }}
         run: |
+          if [ -n "$CANDIDATE" ]; then
+            [ -n "$CANDIDATE_ADMIN" ] || { echo "::error::gateway_image needs admin_image"; exit 1; }
+            echo 'versions=["candidate"]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           versions=$(grep -v '^\s*\(#\|$\)' clients/release/gateways.txt | python3 -I -c 'import json, sys; print(json.dumps(sys.stdin.read().split()))')
           echo "versions=$versions" >> "$GITHUB_OUTPUT"
 
   compatibility:
     needs: gateways
-    runs-on: ${{ inputs.runner && fromJSON(inputs.runner) || vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner && fromJSON(inputs.runner) || vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
       contents: read
@@ -82,11 +103,12 @@ jobs:
     # released public images (ai-gateway, ai-gateway-admin), so there `dev`
     # means the newest release, `latest`.
     env:
-      GATEWAY_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.repository == 'qucelerate/ai-gateway' && 'ai-gateway' || 'gateway' }}:${{ (github.repository == 'qucelerate/ai-gateway' && matrix.gateway == 'dev') && 'latest' || matrix.gateway }}
-      ADMIN_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.repository == 'qucelerate/ai-gateway' && 'ai-gateway-admin' || 'gateway-admin' }}:${{ (github.repository == 'qucelerate/ai-gateway' && matrix.gateway == 'dev') && 'latest' || matrix.gateway }}
+      # A release's candidates (gateway_image, admin_image) when given.
+      GATEWAY_IMAGE: ${{ inputs.gateway_image || format('ghcr.io/{0}/{1}:{2}', github.repository_owner, github.repository == 'qucelerate/ai-gateway' && 'ai-gateway' || 'gateway', (github.repository == 'qucelerate/ai-gateway' && matrix.gateway == 'dev') && 'latest' || matrix.gateway) }}
+      ADMIN_IMAGE: ${{ inputs.admin_image || format('ghcr.io/{0}/{1}:{2}', github.repository_owner, github.repository == 'qucelerate/ai-gateway' && 'ai-gateway-admin' || 'gateway-admin', (github.repository == 'qucelerate/ai-gateway' && matrix.gateway == 'dev') && 'latest' || matrix.gateway) }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust toolchain
         uses: ./.github/actions/setup-rust
@@ -99,13 +121,13 @@ jobs:
           python-version: "3.13"
 
       - name: Install Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
           cache: false
 
       - name: Install Java
-        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: "17"
@@ -126,7 +148,7 @@ jobs:
         run: clients/release/build-examples.sh "$RUNNER_TEMP/examples" ${CLIENT:+"$CLIENT"}
 
       - name: Sign in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -165,7 +187,7 @@ jobs:
           echo "GATEWAY_UNDER_TEST=$(docker inspect --format '{{index .RepoDigests 0}}' "$GATEWAY_IMAGE")" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.22.2
           cache: npm
@@ -181,13 +203,13 @@ jobs:
         env:
           CLIENT_EXAMPLES: ${{ runner.temp }}/examples/examples.json
           # Beside the report: the artifact is rooted at its files' common
-          # directory, so compatibility.json sits at its top (clients-release.yml).
+          # directory, so compatibility.json sits at its top (release.yml).
           CLIENT_RESULTS: ${{ github.workspace }}/tests/functional/compatibility.json
         run: tests/functional/run.sh --no-build specs/clients.spec.ts
 
       - name: Keep the result
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compatibility-${{ matrix.gateway }}
           path: |

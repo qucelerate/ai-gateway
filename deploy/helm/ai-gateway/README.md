@@ -41,7 +41,7 @@ and SLSA provenance:
 
 ```sh
 cosign verify ghcr.io/qucelerate/ai-gateway:X.Y.Z \
-  --certificate-identity-regexp '^https://github.com/qucelerate/ai-gateway/\.github/workflows/release-images\.yml@refs/tags/v' \
+  --certificate-identity-regexp '^https://github.com/qucelerate/ai-gateway/\.github/workflows/release\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 

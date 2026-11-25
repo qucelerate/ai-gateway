@@ -37,7 +37,12 @@ organization's provider accounts, and records what it cost.
   sign-in (local accounts or OIDC), connections, catalog, budgets, usage
   reports and exports, webhooks, audit.
 - **Client libraries** for Rust, Python, Go, Java and C/C++ (`clients/`),
-  experimental until 1.0. Any HTTP client works too.
+  experimental (their APIs may still change). Any HTTP client works too.
+- **One release for everything**: a tag `vYYYY.M.PATCH` (calendar
+  versions, for example `v2026.11.0`) publishes the signed container
+  images and Helm chart, the documentation site and every client library,
+  all at that version; changes that need you to act are listed under
+  *Breaking* in `CHANGELOG.md`.
 
 ### Budgets are a strong control, not a hard ceiling
 

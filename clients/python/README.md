@@ -2,7 +2,7 @@
 
 A client for the [QuCelerate AI Gateway](https://gateway.qucelerate.com)
 inference API, contract 1.0.0: chat, streaming chat, and embeddings, with a
-synchronous `Client` and an asyncio `AsyncClient`. Python 3.9 or later; its
+synchronous `Client` and an asyncio `AsyncClient`. Python 3.10 or later; its
 one dependency is `httpx`. It is a transport wrapper: authorization, budgets,
 routing, and settlement stay on the gateway.
 

@@ -1,6 +1,6 @@
 name: Helm chart
 
-# Lints and renders deploy/helm/ai-gateway, the chart release-images.yml
+# Lints and renders deploy/helm/ai-gateway, the chart release.yml
 # publishes: with its defaults, and with every optional part turned on.
 on:
   push:
@@ -24,11 +24,11 @@ concurrency:
 jobs:
   lint-and-render:
     # Needs nothing the self-hosted runner keeps; GitHub's runners do.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Helm
         uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0

@@ -313,7 +313,7 @@ static void test_null(void) {
     CHECK(gw_stream_next(NULL, NULL, NULL) == GW_E_CONFIG);
     CHECK(gw_chat(NULL, NULL, NULL, NULL, NULL) == GW_E_CONFIG);
     CHECK(strcmp(gw_status_name(GW_E_TIMEOUT), "timeout") == 0);
-    CHECK(strcmp(gw_version(), "0.2.0") == 0);
+    CHECK(strcmp(gw_version(), GW_VERSION_STRING) == 0);
 }
 
 /* --------------------------------------------------------------- decode */

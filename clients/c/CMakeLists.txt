@@ -41,9 +41,12 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # libqucelerate-ai-gateway.so.0: only the GW_API functions of gateway.h are
-# exported. Installed, the target is qucelerate::ai-gateway.
+# exported. Installed, the target is qucelerate::ai-gateway. The SONAME's
+# number is the ABI version, not the release's: releases are calendar
+# versions (2026.11.0), and it changes only when the ABI breaks.
+set(GATEWAY_SOVERSION 0)
 add_library(gateway SHARED $<TARGET_OBJECTS:gateway_objects>)
-set_target_properties(gateway PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR}
+set_target_properties(gateway PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${GATEWAY_SOVERSION}
   OUTPUT_NAME qucelerate-ai-gateway EXPORT_NAME ai-gateway)
 target_include_directories(gateway PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                                           $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
@@ -77,7 +80,8 @@ install(EXPORT gatewayTargets NAMESPACE qucelerate:: FILE qucelerate-ai-gatewayT
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/qucelerate-ai-gatewayConfig.cmake
   "include(\"\${CMAKE_CURRENT_LIST_DIR}/qucelerate-ai-gatewayTargets.cmake\")\n")
 write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/qucelerate-ai-gatewayConfigVersion.cmake
-  COMPATIBILITY SameMinorVersion)
+  # Calendar versions: any newer release keeps the ABI of the SONAME.
+  COMPATIBILITY AnyNewerVersion)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/qucelerate-ai-gatewayConfig.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/qucelerate-ai-gatewayConfigVersion.cmake
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/qucelerate-ai-gateway)

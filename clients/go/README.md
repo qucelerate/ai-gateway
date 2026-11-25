@@ -6,8 +6,13 @@ transport wrapper; authorization, budgets, routing, and settlement stay on
 the gateway. It uses only the standard library and needs Go 1.22 or later.
 
 ```sh
-go get github.com/qucelerate/ai-gateway/clients/go
+go get github.com/qucelerate/ai-gateway/clients/go@v0.202611.0-rc.1
 ```
+
+The client is released with the gateway, whose versions are calendar
+versions (`YYYY.M.PATCH`). A Go module version of 2 or more needs a path
+suffix, so the module's versions are `v0.YYYYMM.PATCH`: release
+2026.11.0 is `v0.202611.0`, and `gateway.Version` reports `2026.11.0`.
 
 The package is named `gateway`:
 

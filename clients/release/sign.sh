@@ -33,7 +33,7 @@ env = os.environ.get
 server = env("GITHUB_SERVER_URL", "https://github.com")
 repo = env("GITHUB_REPOSITORY", "local/local")
 ref = env("GITHUB_REF", "refs/heads/local")
-workflow = env("GITHUB_WORKFLOW_REF", f"{repo}/.github/workflows/clients-release.yml@{ref}")
+workflow = env("GITHUB_WORKFLOW_REF", f"{repo}/.github/workflows/release.yml@{ref}")
 path = workflow.split("@", 1)[0].removeprefix(repo + "/")
 run = f"{server}/{repo}/actions/runs/{env('GITHUB_RUN_ID', '0')}/attempts/{env('GITHUB_RUN_ATTEMPT', '1')}"
 print(json.dumps({

@@ -4,6 +4,6 @@
 # ghcr.io/qucelerate/ai-gateway and ai-gateway-admin in the public one.
 # `dev` is main (in the public repository, which publishes no `dev`
 # image, the newest release: `latest`). A gateway release adds its version
-# (a v1.2.3 tag publishes images tagged 1.2.3); drop a version when it is
+# (a v2026.11.0 tag publishes images tagged 2026.11.0); drop a version when it is
 # no longer supported.
 dev

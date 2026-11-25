@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CLIENT_VERSION, GO_MODULE_VERSION } from './client-versions';
 import { hasClient, languages, requestBody, snippet, type CodeStyle, type Language, type PlaygroundRequest } from './playground-code';
 
 const BASE = 'https://gateway.example.com';
@@ -172,5 +173,19 @@ describe('playground code', () => {
       expect(snippet('java', 'client', request, { baseUrl: BASE, stream: false }).code).not.toContain('ObjectMapper');
       expect(snippet('rust', 'client', request, { baseUrl: BASE, stream: false }).setup).not.toContain('serde_json');
     });
+  });
+
+  // Every component of a release carries one version: the snippets install
+  // this console's clients. Cargo treats every 2026.x as compatible, so the
+  // crate is pinned exactly; the Go module's version is v0.YYYYMM.PATCH.
+  it('installs the clients of this release', () => {
+    expect(CLIENT_VERSION).toMatch(/^[1-9]\d{3}\.[1-9]\d?\.\d+(-rc\.\d+)?$/);
+    const [year, month, patch] = CLIENT_VERSION.split('-')[0].split('.');
+    expect(GO_MODULE_VERSION).toBe(`v0.${year}${month.padStart(2, '0')}.${patch}${CLIENT_VERSION.includes('-') ? CLIENT_VERSION.slice(CLIENT_VERSION.indexOf('-')) : ''}`);
+    const setup = (language: Language) => snippet(language, 'client', request, { baseUrl: BASE, stream: false }).setup;
+    expect(setup('python')).toContain(`pip install qucelerate-ai-gateway==${CLIENT_VERSION}  # Python 3.10+`);
+    expect(setup('rust')).toContain(`qucelerate-ai-gateway = "=${CLIENT_VERSION}"`);
+    expect(setup('go')).toContain(`go get github.com/qucelerate/ai-gateway/clients/go@${GO_MODULE_VERSION}`);
+    expect(setup('java')).toContain(`com.qucelerate:qucelerate-ai-gateway:${CLIENT_VERSION}`);
   });
 });
