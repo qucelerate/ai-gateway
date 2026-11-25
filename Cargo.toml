@@ -1,6 +1,6 @@
 [package]
 name = "gateway"
-version = "2026.11.0-rc.3"
+version = "2026.11.0-rc.4"
 edition = "2024"
 # 1.87: the first release ctutils 0.4.4+ supports (RUSTSEC-2026-0385 fix,
 # via aes-gcm 0.11). The release image builds with a newer toolchain.

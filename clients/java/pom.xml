@@ -6,7 +6,7 @@
 
   <groupId>com.qucelerate</groupId>
   <artifactId>qucelerate-ai-gateway</artifactId>
-  <version>2026.11.0-rc.3</version>
+  <version>2026.11.0-rc.4</version>
   <packaging>jar</packaging>
 
   <name>QuCelerate AI Gateway client</name>

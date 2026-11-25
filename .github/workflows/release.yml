@@ -518,11 +518,14 @@ jobs:
           merge-multiple: true
           path: dist
 
+      # By name into the directory compatibility.py reads: download-artifact
+      # puts a pattern's lone match straight into `path`, without the
+      # per-artifact subdirectory the check expects.
       - name: Fetch the compatibility result
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: compatibility-*
-          path: ${{ runner.temp }}/compatibility
+          name: compatibility-candidate
+          path: ${{ runner.temp }}/compatibility/compatibility-candidate
 
       # Every client, at this version, passed against the candidate images.
       - name: Check and attach the compatibility result

@@ -6,7 +6,7 @@ transport wrapper; authorization, budgets, routing, and settlement stay on
 the gateway. It uses only the standard library and needs Go 1.22 or later.
 
 ```sh
-go get github.com/qucelerate/ai-gateway/clients/go@v0.202611.0-rc.3
+go get github.com/qucelerate/ai-gateway/clients/go@v0.202611.0-rc.4
 ```
 
 The client is released with the gateway, whose versions are calendar

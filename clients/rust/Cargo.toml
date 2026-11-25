@@ -1,6 +1,6 @@
 [package]
 name = "qucelerate-ai-gateway"
-version = "2026.11.0-rc.3"
+version = "2026.11.0-rc.4"
 edition = "2024"
 rust-version = "1.85"
 description = "Client for the QuCelerate AI Gateway inference API (contract 1.0.0)"
