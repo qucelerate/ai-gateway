@@ -1,0 +1,97 @@
+{
+  "name": "retry_rate_limited_then_success",
+  "description": "A 429 rate_limit_exceeded is retried with the same key after Retry-After, and the retry's success is returned.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 429,
+      "headers": {
+        "retry-after": "3",
+        "x-request-id": "req-429"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/rate_limit_exceeded",
+        "code": "rate_limit_exceeded",
+        "title": "error",
+        "status": 429,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-429"
+      }
+    },
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-ok"
+      },
+      "json": {
+        "id": "chatcmpl-6",
+        "model": "chat-default",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Hello.",
+              "name": null,
+              "tool_call_id": null
+            },
+            "finish_reason": "stop",
+            "tool_calls": [],
+            "refusal": null,
+            "safety": [],
+            "annotations": []
+          }
+        ],
+        "usage": {
+          "input_tokens": 9,
+          "output_tokens": 2,
+          "cached_input_tokens": 0,
+          "reasoning_tokens": 0,
+          "other_tokens": null,
+          "quality": "exact",
+          "completeness": "complete"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 2,
+    "same_idempotency_key": true,
+    "sleeps": [
+      3
+    ],
+    "result": {
+      "request_id": "req-ok",
+      "id": "chatcmpl-6"
+    }
+  }
+}

@@ -1,0 +1,104 @@
+services:
+  postgres:
+    # Docker's official postgres image through ECR Public, pinned; see the
+    # Dockerfile for how to update. CI sets POSTGRES_IMAGE to its GHCR copy
+    # (scripts/mirror-base-images.sh).
+    image: ${POSTGRES_IMAGE:-public.ecr.aws/docker/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gateway}
+      # This account exists only to bootstrap the local container. The
+      # application connects as the least-privilege account created below.
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-gateway_bootstrap_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+      GATEWAY_APP_USER: ${GATEWAY_APP_USER:-gateway_app}
+      GATEWAY_APP_PASSWORD: ${GATEWAY_APP_PASSWORD:?Set GATEWAY_APP_PASSWORD in .env}
+      # Optional: creates the gateway_data_plane role for a data-plane process.
+      GATEWAY_DATA_PLANE_PASSWORD: ${GATEWAY_DATA_PLANE_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - gateway-postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/001-create-gateway-app.sh:/docker-entrypoint-initdb.d/001-create-gateway-app.sh:ro
+      - ./docker/postgres/002-create-gateway-data-plane.sh:/docker-entrypoint-initdb.d/002-create-gateway-data-plane.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # The services below form the `app` profile: the all-in-one gateway and the
+  # admin UI on one origin, http://localhost:${GATEWAY_HTTP_PORT:-8080}.
+  #
+  #   docker compose --profile app up --build
+  #
+  # Without the profile, `docker compose up` starts PostgreSQL alone, for a
+  # gateway run with `cargo run`.
+
+  # Applies migrations, then exits; the gateway starts only after it
+  # succeeds, as a rolling release would.
+  migrate:
+    profiles: [app]
+    build: .
+    image: gateway:local
+    command: ["migrate"]
+    environment: &gateway-environment
+      # Built from the Postgres settings above, which must then be URL-safe
+      # (random hex, say); otherwise set GATEWAY_COMPOSE_DATABASE_URL to the
+      # URL with the password percent-encoded, at host `postgres`.
+      DATABASE_URL: ${GATEWAY_COMPOSE_DATABASE_URL:-postgres://${GATEWAY_APP_USER:-gateway_app}:${GATEWAY_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-gateway}}
+      GATEWAY_PROFILE: all-in-one
+      BIND_ADDR: "[::]:3000"
+      # The browser-visible origin of the UI and API, which the admin
+      # session cookies and CSRF checks are bound to.
+      GATEWAY_ORIGIN: http://localhost:${GATEWAY_HTTP_PORT:-8080}
+      OIDC_REDIRECT_URI: http://localhost:${GATEWAY_HTTP_PORT:-8080}/api/admin/v1/oidc/callback
+      # Local accounts let a first install be tried without an identity
+      # provider; the first start logs a setup link. They come on once .env
+      # has the session secrets (unset here means "when configured"; true
+      # makes missing secrets a startup error). The proxy below sets
+      # X-Forwarded-For.
+      GATEWAY_LOCAL_ACCOUNTS: ${GATEWAY_LOCAL_ACCOUNTS:-}
+      GATEWAY_SELF_SERVE_ORGANIZATIONS: ${GATEWAY_SELF_SERVE_ORGANIZATIONS:-false}
+      GATEWAY_TRUST_X_FORWARDED_FOR: "true"
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  gateway:
+    profiles: [app]
+    image: gateway:local
+    # Everything else (API_KEY_PEPPER, OIDC, session secrets, provider
+    # credentials, GATEWAY_CREDENTIAL_ENCRYPTION_KEY) comes from .env; the
+    # values above take precedence for the container's own addresses.
+    env_file:
+      - path: .env
+        required: false
+    environment: *gateway-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  admin:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: docker/admin/Dockerfile
+    image: gateway-admin:local
+    restart: unless-stopped
+
+  proxy:
+    profiles: [app]
+    image: ghcr.io/nginx/nginx-unprivileged:1.29-alpine@sha256:0c79d56aee561a1d81c63f00eee5fb5fe29279560cdc55e91425133104c7fbe6
+    volumes:
+      - ./docker/proxy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:${GATEWAY_HTTP_PORT:-8080}:8080"
+    depends_on:
+      - gateway
+      - admin
+    restart: unless-stopped
+
+volumes:
+  gateway-postgres-data:

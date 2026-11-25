@@ -1,0 +1,32 @@
+name: Install apt packages
+description: >
+  Installs the Ubuntu packages a job needs that the runner lacks. GitHub's
+  runners ship most of them, and the self-hosted runner keeps what it
+  installs, so a package already present (by its command, or by dpkg) is
+  skipped and most runs install nothing.
+inputs:
+  packages:
+    description: >
+      Space-separated entries: `command=package` installs the package when
+      the command is missing; a bare `package` installs it unless dpkg has it.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install missing packages
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        missing=()
+        for entry in $PACKAGES; do
+          case "$entry" in
+            *=*) command -v "${entry%%=*}" >/dev/null 2>&1 || missing+=("${entry#*=}") ;;
+            *) dpkg -s "$entry" >/dev/null 2>&1 || missing+=("$entry") ;;
+          esac
+        done
+        if [ "${#missing[@]}" -gt 0 ]; then
+          echo "installing: ${missing[*]}"
+          sudo apt-get -o DPkg::Lock::Timeout=300 update
+          sudo apt-get -o DPkg::Lock::Timeout=300 install -y "${missing[@]}"
+        fi

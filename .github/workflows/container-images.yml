@@ -1,0 +1,378 @@
+name: Container images
+
+# Builds the gateway and admin UI images and runs the Compose stack once:
+# migrations apply, and the admin UI and both APIs answer on one origin.
+# The functional suite (tests/functional) then drives the images through
+# the admin UI, with AWS faked.
+# On main and on release tags (v*), the images are then published to GHCR
+# (the release process).
+on:
+  # A branch's pushes are checked by its pull request; running both pulled
+  # every base image twice at once.
+  push:
+    branches: [main]
+    # Path filters do not apply to tag pushes: a release tag always publishes.
+    tags: ["v*"]
+    paths:
+      - "src/**"
+      - "migrations/**"
+      - "model-cards/**"
+      - "build.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/admin/**"
+      - "docker/**"
+      # The docs image is public-docs-ci's.
+      - "!docker/docs/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "compose.yaml"
+      - "tests/functional/**"
+      - "scripts/mirror-base-images.sh"
+      - ".github/workflows/container-images.yml"
+  # By hand, on main or a release tag: when GitHub loses a push's runs
+  # (an incident can leave them queued for good), run each again here.
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/**"
+      - "migrations/**"
+      - "model-cards/**"
+      - "build.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/admin/**"
+      - "docker/**"
+      # The docs image is public-docs-ci's.
+      - "!docker/docs/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "compose.yaml"
+      - "tests/functional/**"
+      - "scripts/mirror-base-images.sh"
+      - ".github/workflows/container-images.yml"
+
+permissions:
+  contents: read
+
+# A newer push cancels a branch's runs, but not main's: image publishing
+# waits for main's checks, so each must finish.
+concurrency:
+  group: container-images-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # Copies the ECR Public base images into GHCR, digests preserved, and
+  # names the copies for the jobs below. Here, on a fresh GitHub runner,
+  # because it alone may write packages: the persistent runner, where pull
+  # requests run their own code, gets no token that can. A copy is made
+  # once per digest, so this pulls from ECR Public only when a pin changes.
+  base-images:
+    # A fresh GitHub runner: it holds the token that can write packages.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      node: ${{ steps.mirror.outputs.NODE_IMAGE }}
+      postgres: ${{ steps.mirror.outputs.POSTGRES_IMAGE }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Sign in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # NODE_IMAGE and POSTGRES_IMAGE name the copies; an image that could
+      # not be copied is left out, and stays on ECR Public. Only the private
+      # repository copies: elsewhere (the public qucelerate/ai-gateway, a
+      # fork) existing copies are only looked up.
+      - name: Mirror base images
+        id: mirror
+        env:
+          OWNER: ${{ github.repository_owner }}
+          MIRROR_LOOKUP_ONLY: ${{ github.repository != 'qucelerate/gateway' && '1' || '0' }}
+        run: scripts/mirror-base-images.sh "ghcr.io/${OWNER,,}/mirror" | tee -a "$GITHUB_OUTPUT"
+
+  build-and-smoke-test:
+    needs: base-images
+    # The repository variable CI_RUNNER (a JSON label list, for example
+    # ["self-hosted"]) runs this job on our own runner, which
+    # pulls from its own address and keeps its Docker cache; unset, it runs
+    # on GitHub's. One runner: the jobs queue rather than share the stack's
+    # ports. Publishing never runs there (see publish).
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    # Reads the base images' GHCR copies; never writes packages.
+    permissions:
+      contents: read
+      packages: read
+    env:
+      COMPOSE_PROJECT_NAME: gateway-ci
+      NODE_IMAGE: ${{ needs.base-images.outputs.node }}
+      POSTGRES_IMAGE: ${{ needs.base-images.outputs.postgres }}
+      GATEWAY_HTTP_PORT: "18080"
+      FAKES_PORT: "14599"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # Disposable values for this run only.
+      - name: Write a throwaway .env
+        run: |
+          umask 077
+          {
+            echo "POSTGRES_ADMIN_PASSWORD=$(openssl rand -hex 16)"
+            echo "GATEWAY_APP_PASSWORD=$(openssl rand -hex 16)"
+            echo "API_KEY_PEPPER=$(openssl rand -hex 32)"
+          } > .env
+
+      # On a runner that persists, a cancelled run can leave its stacks.
+      - name: Remove stacks left by an earlier run
+        run: |
+          docker compose --profile app down -v --remove-orphans
+          COMPOSE_PROJECT_NAME=gateway-functional docker compose \
+            -f compose.yaml -f tests/functional/compose.yaml --profile app \
+            down -v --remove-orphans
+
+      - name: Sign in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # NODE_IMAGE and POSTGRES_IMAGE (from base-images) name the GHCR
+      # copies; empty, Compose and the Dockerfile keep their ECR pins.
+      - name: Build images
+        run: |
+          docker compose --profile app build \
+            ${NODE_IMAGE:+--build-arg "NODE_IMAGE=${NODE_IMAGE}"}
+
+      # A throttled pull is retried, should an image still come from ECR
+      # Public (toomanyrequests). Only the stack's external images, the
+      # functional suite's fake included: `gateway` (shared by `migrate`)
+      # and `admin` were just built.
+      - name: Pull base images
+        run: |
+          for attempt in 1 2 3 4 5; do
+            docker compose -f compose.yaml -f tests/functional/compose.yaml --profile app \
+              pull --quiet postgres proxy fakes && exit 0
+            echo "Pull attempt ${attempt} failed; retrying"
+            sleep $((attempt * 10))
+          done
+          exit 1
+
+      - name: Start the stack
+        run: docker compose --profile app up -d --no-build
+
+      - name: Check the one-origin routes
+        run: |
+          base="http://127.0.0.1:${GATEWAY_HTTP_PORT}"
+          timeout 120 bash -c "until curl -fsS $base/healthz >/dev/null; do sleep 2; done"
+          test "$(docker inspect -f '{{.State.ExitCode}}' gateway-ci-migrate-1)" = 0
+          # The admin UI, with a client-side route falling back to index.html.
+          curl -fsS "$base/admin/overview" | grep -q '<div id="root">'
+          # Both APIs reach the gateway and require authentication.
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "$base/api/admin/v1/me")" = 401
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+            -H 'content-type: application/json' -d '{}' \
+            "$base/api/inference/v1/chat/completions")" = 401
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --profile app logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose --profile app down -v
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: tests/functional/package-lock.json
+
+      - name: Install the functional suite
+        working-directory: tests/functional
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npx playwright install --with-deps chromium
+
+      # Its own stack (project gateway-functional), from the images above.
+      - name: Run the functional suite
+        run: tests/functional/run.sh --no-build
+
+      - name: Functional suite report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: functional-report
+          path: |
+            tests/functional/playwright-report/
+            tests/functional/test-results/
+          retention-days: 7
+
+  # The images CI built and checked, published: tagged with the 12-character
+  # commit SHA (immutable; deployments pin it), plus `dev` on main and the
+  # version on a release tag. Only after the commit's Rust and admin UI
+  # checks pass; pushed with this workflow's own token. The private
+  # repository's dev images only: the public repository, qucelerate/ai-gateway,
+  # publishes its release images with release-images.yml.
+  publish:
+    needs: [base-images, build-and-smoke-test]
+    if: github.repository == 'qucelerate/gateway' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    timeout-minutes: 90
+    # A fresh GitHub runner, never the persistent one: pull requests run
+    # their own code there, and a host they changed must not build what is
+    # published.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: gateway
+            dockerfile: Dockerfile
+          - image: gateway-admin
+            dockerfile: docker/admin/Dockerfile
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # Every workflow a push starts is created with the push, so by now each
+      # check this commit runs exists; one a path filter skipped has nothing
+      # to wait for. The newest run of each decides: a release tag reruns
+      # the checks, and an earlier pass on main does not count if they fail.
+      # A run started by hand counts too, so one that replaces a lost run
+      # (run the checks again first) is what this waits for.
+      - name: Wait for the commit's checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          for workflow in "Rust CI" "Admin frontend CI"; do
+            while :; do
+              run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100" \
+                --jq "[.workflow_runs[] | select(.name == \"${workflow}\" and (.event == \"push\" or .event == \"workflow_dispatch\"))] | sort_by(.created_at) | last")
+              # `gh --jq` prints nothing for null.
+              if [ -z "$run" ] || [ "$run" = null ]; then
+                echo "${workflow}: not run for this commit"
+                break
+              fi
+              if [ "$(jq -r .status <<<"$run")" = completed ]; then
+                conclusion=$(jq -r .conclusion <<<"$run")
+                if [ "$conclusion" = success ]; then
+                  echo "${workflow}: passed"
+                  break
+                fi
+                echo "::error::${workflow} ${conclusion} for ${SHA}: $(jq -r .html_url <<<"$run")"
+                exit 1
+              fi
+              sleep 30
+            done
+          done
+
+      - name: Image
+        id: image
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          image=${IMAGE,,}
+          {
+            echo "name=${image}"
+            echo "pinned=${image}:${SHA:0:12}"
+            case "$REF" in
+              refs/heads/main) echo "alias=${image}:dev" ;;
+              refs/tags/v*) echo "alias=${image}:${REF#refs/tags/v}" ;;
+            esac
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Sign in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # The base images' GHCR copies (same digests; ECR Public throttles
+      # GitHub's runners): only those the Dockerfile takes, and only those
+      # base-images copied.
+      - name: Base images
+        id: base
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          NODE_IMAGE: ${{ needs.base-images.outputs.node }}
+          POSTGRES_IMAGE: ${{ needs.base-images.outputs.postgres }}
+        run: |
+          {
+            echo "build-args<<ARGS"
+            for name in NODE_IMAGE POSTGRES_IMAGE; do
+              if [ -n "${!name}" ] && grep -q "^ARG ${name}=" "$DOCKERFILE"; then
+                echo "${name}=${!name}"
+              fi
+            done
+            echo "ARGS"
+          } >> "$GITHUB_OUTPUT"
+
+      # The SHA tag never changes once pushed: a rerun, or a release tag on a
+      # commit main already published, reuses that image rather than
+      # rebuilding it.
+      - name: Already published?
+        id: existing
+        env:
+          PINNED: ${{ steps.image.outputs.pinned }}
+        run: |
+          if docker buildx imagetools inspect "$PINNED" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "${PINNED} exists; reusing it"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        if: steps.existing.outputs.found != 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          build-args: ${{ steps.base.outputs.build-args }}
+          tags: ${{ steps.image.outputs.pinned }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      # `dev` or the version names the pinned image, never a separate build.
+      - name: Tag
+        if: steps.image.outputs.alias != ''
+        env:
+          PINNED: ${{ steps.image.outputs.pinned }}
+          ALIAS: ${{ steps.image.outputs.alias }}
+        run: docker buildx imagetools create --tag "$ALIAS" "$PINNED"
+
+      - name: Digest
+        env:
+          PINNED: ${{ steps.image.outputs.pinned }}
+        run: |
+          digest=$(docker buildx imagetools inspect "$PINNED" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "${PINNED}@${digest}" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,13 @@
+event: response.started
+data: {"model":"chat-default"}
+
+event: choice.delta
+data: {"choice_index":0,
+data: "content_delta":"multi","refusal_delta":null,"annotations":[]}
+
+event: choice.finished
+data: {"choice_index":0,"finish_reason":"stop"}
+
+event: response.completed
+data: {"model":"chat-default","usage":null}
+

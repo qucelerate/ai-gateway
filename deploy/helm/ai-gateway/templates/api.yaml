@@ -1,0 +1,96 @@
+{{- if .Values.controlPlane.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.name" . }}-api
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "gateway.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway.selectorLabels" (dict "root" . "component" "api") | nindent 8 }}
+      {{- with include "gateway.metricsAnnotations" . | trim }}{{ . | nindent 6 }}{{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- $tls := ternary .Values.ingress.tlsSecretName "" .Values.http3.enabled }}
+      {{- include "gateway.cloudPod" (dict "root" . "tlsSecret" $tls) | nindent 6 }}
+      terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "gateway.podSecurity" . | nindent 8 }}
+        {{- include "gateway.runAs" . | nindent 8 }}
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ include "gateway.imageTag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "gateway.env" (dict "root" . "profile" "api") | nindent 12 }}
+            {{- include "gateway.cloudEnv" . | nindent 12 }}
+            {{- with include "gateway.metricsEnv" . | trim }}{{ . | nindent 12 }}{{- end }}
+            {{- with include "gateway.http3Env" (dict "root" . "altSvc" .Values.http3.altSvc) | trim }}{{ . | nindent 12 }}{{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+            {{- with .Values.cloudIdentity.existingSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+          {{- include "gateway.cloudContainer" (dict "root" . "tlsSecret" $tls) | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: 3000
+            {{- with include "gateway.metricsPort" . | trim }}{{ . | nindent 12 }}{{- end }}
+            {{- with include "gateway.http3Port" . | trim }}{{ . | nindent 12 }}{{- end }}
+          # Not ready until routing configuration is loaded, nor while the
+          # configuration feed cannot be read (the primary is unreachable).
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          lifecycle:
+            # Leave the Service's endpoints before SIGTERM, so no new
+            # request arrives while streams drain.
+            preStop:
+              sleep:
+                seconds: 5
+          securityContext:
+            {{- include "gateway.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gateway.name" . }}-api
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  {{- include "gateway.serviceFamilies" . | nindent 2 }}
+  selector:
+    {{- include "gateway.selectorLabels" (dict "root" . "component" "api") | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+{{- if .Values.http3.enabled }}
+---
+{{ include "gateway.http3Service" (dict "root" . "component" "api") }}
+{{- end }}
+{{- end }}

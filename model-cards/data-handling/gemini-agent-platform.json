@@ -1,0 +1,40 @@
+{
+  "schema": "qucelerate.data-handling.v1",
+  "provider_family": "gemini",
+  "service": "agent-platform",
+  "name": "Gemini Enterprise Agent Platform",
+  "applies_to": "Deployments the gateway calls on Agent Platform (formerly Vertex AI) with a Google Cloud identity.",
+  "facts": {
+    "training_use": {
+      "value": "Google won't use your data to train or fine-tune any AI/ML models without your prior permission or instruction. This applies to all managed models on Gemini Enterprise Agent Platform, including GA and pre-GA models.",
+      "source_url": "https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "retention": {
+      "value": "By default, Google's published Gemini models cache Customer Data (inputs, outputs, and derived data) to reduce latency and accelerate responses; customer data is retained for limited periods in the scenarios the page lists.",
+      "source_url": "https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "abuse_monitoring": {
+      "value": "Google may log prompts to detect potential abuse and violations of its Acceptable Use Policy and Prohibited Use Policy as part of providing generative AI services to customers. Certain models or features may also be subject to additional prompt and response logging to prevent abuse.",
+      "source_url": "https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "zero_data_retention": {
+      "value": "To achieve zero data retention, customers must take specific actions within each of the areas the page lists; it may not be possible when using some Advanced AI features.",
+      "source_url": "https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "terms_url": {
+      "value": "https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance",
+      "source_url": "https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "Agent Platform data governance"
+    }
+  }
+}

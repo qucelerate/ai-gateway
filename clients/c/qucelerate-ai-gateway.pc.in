@@ -1,0 +1,9 @@
+prefix=${pcfiledir}/@GATEWAY_PC_TO_PREFIX@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: qucelerate-ai-gateway
+Description: Client for the QuCelerate AI Gateway inference API (contract 1.0.0)
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lqucelerate-ai-gateway
+Cflags: -I${includedir}

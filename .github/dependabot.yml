@@ -1,0 +1,44 @@
+# Weekly dependency updates, one grouped pull request per ecosystem and
+# directory (security updates still arrive as they are published).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      cargo: { patterns: ["*"] }
+  - package-ecosystem: cargo
+    directory: /clients/rust
+    schedule: { interval: weekly }
+    groups:
+      cargo-client: { patterns: ["*"] }
+  - package-ecosystem: npm
+    directory: /apps/admin
+    schedule: { interval: weekly }
+    groups:
+      admin: { patterns: ["*"] }
+  - package-ecosystem: npm
+    directory: /apps/docs
+    schedule: { interval: weekly }
+    groups:
+      docs: { patterns: ["*"] }
+  - package-ecosystem: pip
+    directory: /clients/python
+    schedule: { interval: weekly }
+    groups:
+      python-client: { patterns: ["*"] }
+  - package-ecosystem: gomod
+    directory: /clients/go
+    schedule: { interval: weekly }
+    groups:
+      go-client: { patterns: ["*"] }
+  - package-ecosystem: maven
+    directory: /clients/java
+    schedule: { interval: weekly }
+    groups:
+      java-client: { patterns: ["*"] }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }

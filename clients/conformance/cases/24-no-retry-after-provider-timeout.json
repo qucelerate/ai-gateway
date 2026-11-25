@@ -1,0 +1,60 @@
+{
+  "name": "no_retry_after_provider_timeout",
+  "description": "A provider_timeout (504) is never retried automatically: the provider may already have done, and billed, the work.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 504,
+      "headers": {
+        "x-request-id": "req-504"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/provider_timeout",
+        "code": "provider_timeout",
+        "title": "error",
+        "status": 504,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-504"
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "error": {
+      "kind": "problem",
+      "status": 504,
+      "code": "provider_timeout",
+      "request_id": "req-504"
+    }
+  }
+}

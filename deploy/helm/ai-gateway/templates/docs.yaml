@@ -1,0 +1,91 @@
+{{- if .Values.docs.enabled }}
+# The public documentation site: static, unauthenticated, no tenant data,
+# on a host of its own (gateway repository: the architecture docs (https://gateway.qucelerate.com/architecture/),
+# Admin UI and documentation deployment). Independent of the control plane.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.name" . }}-docs
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: docs
+spec:
+  replicas: {{ .Values.docs.replicas }}
+  selector:
+    matchLabels:
+      {{- include "gateway.selectorLabels" (dict "root" . "component" "docs") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway.selectorLabels" (dict "root" . "component" "docs") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "gateway.podSecurity" . | nindent 8 }}
+      containers:
+        - name: docs
+          image: "{{ .Values.docs.image.repository }}:{{ .Values.docs.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.docs.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 30
+          securityContext:
+            {{- include "gateway.containerSecurity" . | nindent 12 }}
+          # nginx writes its pid and temporary files here.
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+          resources:
+            {{- toYaml .Values.docs.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gateway.name" . }}-docs
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: docs
+spec:
+  selector:
+    {{- include "gateway.selectorLabels" (dict "root" . "component" "docs") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "gateway.name" . }}-docs
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: docs
+  annotations:
+    {{- toYaml .Values.docs.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ required "docs.host is required when docs.enabled" .Values.docs.host | quote }}]
+      secretName: {{ .Values.docs.tlsSecretName }}
+  rules:
+    - host: {{ .Values.docs.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "gateway.name" . }}-docs
+                port: {name: http}
+{{- end }}

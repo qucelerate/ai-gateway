@@ -1,0 +1,138 @@
+{{- $dp := .Values.dataPlane -}}
+{{- if $dp.enabled }}
+# An isolated data plane (GATEWAY_PROFILE=data-plane): inference, /healthz
+# and /readyz only. It routes from configuration versions, but reserves and
+# settles in the central primary, connected as the least-privilege
+# gateway_data_plane role. It never migrates. See the gateway repository's
+# the operations guide (https://gateway.qucelerate.com/operations/), "Data planes and configuration versions".
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.name" . }}-data-plane
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-plane
+spec:
+  replicas: {{ $dp.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "gateway.selectorLabels" (dict "root" . "component" "data-plane") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway.selectorLabels" (dict "root" . "component" "data-plane") | nindent 8 }}
+      {{- with include "gateway.metricsAnnotations" . | trim }}{{ . | nindent 6 }}{{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- /* HTTP/3 only with a host of its own, whose certificate it presents. */}}
+      {{- $tls := ternary $dp.tlsSecretName "" (and .Values.http3.enabled (ne $dp.host "")) }}
+      {{- include "gateway.cloudPod" (dict "root" . "tlsSecret" $tls) | nindent 6 }}
+      terminationGracePeriodSeconds: {{ $dp.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "gateway.podSecurity" . | nindent 8 }}
+        {{- include "gateway.runAs" . | nindent 8 }}
+      containers:
+        - name: data-plane
+          image: "{{ .Values.image.repository }}:{{ include "gateway.imageTag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "gateway.env" (dict "root" . "profile" "data-plane") | nindent 12 }}
+            {{- include "gateway.cloudEnv" . | nindent 12 }}
+            {{- with include "gateway.metricsEnv" . | trim }}{{ . | nindent 12 }}{{- end }}
+            {{- if $tls }}
+            {{- /* Its host serves only the gateway, so clients may be told. */}}
+            {{- include "gateway.http3Env" (dict "root" . "altSvc" (printf "h3=\":%v\"; ma=86400" .Values.http3.port)) | trim | nindent 12 }}
+            {{- end }}
+          # Its own secret, not the control plane's: the data plane's
+          # database URL and only the keys it needs.
+          envFrom:
+            - secretRef:
+                name: {{ required "dataPlane.existingSecret is required" $dp.existingSecret }}
+            {{- with .Values.cloudIdentity.existingSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+          {{- include "gateway.cloudContainer" (dict "root" . "tlsSecret" $tls) | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: 3000
+            {{- with include "gateway.metricsPort" . | trim }}{{ . | nindent 12 }}{{- end }}
+            {{- if $tls }}
+            {{- include "gateway.http3Port" . | trim | nindent 12 }}
+            {{- end }}
+          # Out of the Service until routing configuration is loaded, and
+          # whenever the primary's configuration feed cannot be read.
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          securityContext:
+            {{- include "gateway.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml $dp.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gateway.name" . }}-data-plane
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-plane
+spec:
+  {{- include "gateway.serviceFamilies" . | nindent 2 }}
+  selector:
+    {{- include "gateway.selectorLabels" (dict "root" . "component" "data-plane") | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+{{- if and .Values.http3.enabled $dp.host }}
+---
+{{ include "gateway.http3Service" (dict "root" . "component" "data-plane") }}
+{{- end }}
+{{- if $dp.host }}
+---
+# The data plane's own origin: inference and health only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "gateway.name" . }}-data-plane
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-plane
+  annotations:
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ $dp.host | quote }}]
+      secretName: {{ $dp.tlsSecretName }}
+  rules:
+    - host: {{ $dp.host | quote }}
+      http:
+        paths:
+          {{- range list "/api/inference/v1" "/healthz" "/readyz" }}
+          - path: {{ . }}
+            pathType: {{ ternary "Prefix" "Exact" (hasPrefix "/api" .) }}
+            backend:
+              service:
+                name: {{ include "gateway.name" $ }}-data-plane
+                port: {name: http}
+          {{- end }}
+{{- end }}
+{{- end }}

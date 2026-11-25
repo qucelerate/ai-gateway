@@ -1,0 +1,148 @@
+name: Client release gate
+
+# For each client, what a release must pass beyond its own tests: the
+# artifacts build reproducibly, install into a clean project and run there,
+# carry the license, declare one version with its changelog notes, and hold
+# no secrets. The release workflow (clients-release.yml) calls this one for
+# the client it releases and ships the artifacts it keeps.
+
+on:
+  push:
+    # main only: a pull request runs this for its branch, and a release tag
+    # through clients-release.yml.
+    branches: [main]
+    paths:
+      - ".github/actions/apt-packages/**"
+      - ".github/actions/setup-rust/**"
+      - "clients/**"
+      - "LICENSE"
+      - ".github/workflows/clients-release-gate.yml"
+  pull_request:
+    paths:
+      - ".github/actions/apt-packages/**"
+      - ".github/actions/setup-rust/**"
+      - "clients/**"
+      - "LICENSE"
+      - ".github/workflows/clients-release-gate.yml"
+  workflow_call:
+    inputs:
+      client:
+        description: The one client to check (default all).
+        type: string
+        default: ""
+      runner:
+        description: >
+          The runner, as JSON (a label or a list of labels); default the
+          CI_RUNNER variable, else GitHub's ubuntu-latest.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-release-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # gitleaks, pinned by version and checksum (its release's checksums file).
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+jobs:
+  gate:
+    runs-on: ${{ inputs.runner && fromJSON(inputs.runner) || vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        client: ${{ fromJSON(inputs.client && format('["{0}"]', inputs.client) || '["rust", "python", "go", "java", "c"]') }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Rust toolchain
+        if: matrix.client == 'rust'
+        uses: ./.github/actions/setup-rust
+        with:
+          toolchain: "stable"
+
+      - name: Install Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install the Python build frontend
+        if: matrix.client == 'python'
+        run: python -m pip install build==1.6.1
+
+      - name: Install Go
+        if: matrix.client == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install Java
+        if: matrix.client == 'java'
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Maven
+        if: matrix.client == 'java'
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: mvn=maven
+
+      - name: Install the C toolchain and libcurl
+        if: matrix.client == 'c'
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: cmake=cmake pkg-config=pkg-config libcurl4-openssl-dev
+
+      - name: Install gitleaks
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          echo "GITLEAKS=$RUNNER_TEMP/gitleaks" >> "$GITHUB_ENV"
+
+      - name: Check the license, the version and its changelog notes
+        run: |
+          cmp LICENSE "clients/${{ matrix.client }}/LICENSE" ||
+            { echo "clients/${{ matrix.client }}/LICENSE must be a copy of LICENSE" >&2; exit 1; }
+          echo "version $(python3 -I clients/release/version.py '${{ matrix.client }}')"
+          python3 -I clients/release/changelog.py '${{ matrix.client }}'
+
+      - name: Check the example compiles
+        if: matrix.client == 'python'
+        run: python -m py_compile clients/python/examples/chat.py
+
+      # Built twice from the same commit: the bytes must match.
+      - name: Build the release artifacts, twice
+        run: |
+          clients/release/package.sh "${{ matrix.client }}" dist
+          case "${{ matrix.client }}" in
+            rust) (cd clients/rust && cargo clean) ;;
+            java) rm -rf clients/java/target ;;
+          esac
+          clients/release/package.sh "${{ matrix.client }}" "$RUNNER_TEMP/again"
+          (cd dist && sha256sum -- *) | tee "$RUNNER_TEMP/first.sha256"
+          (cd "$RUNNER_TEMP/again" && sha256sum -- *) > "$RUNNER_TEMP/second.sha256"
+          diff "$RUNNER_TEMP/first.sha256" "$RUNNER_TEMP/second.sha256" ||
+            { echo "the artifacts are not reproducible" >&2; exit 1; }
+
+      - name: Install the artifacts into a clean project and run it
+        run: clients/release/smoke.sh "${{ matrix.client }}" dist
+
+      - name: Scan the sources and the artifacts for secrets
+        run: clients/release/scan.sh dist
+
+      - name: Keep the artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: client-${{ matrix.client }}
+          path: dist/
+          retention-days: 7

@@ -1,0 +1,61 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "amazon/nova-micro",
+  "name": "Amazon Nova Micro",
+  "vendor": "Amazon",
+  "matches": {
+    "bedrock": [
+      "amazon.nova-micro-v1:0",
+      "us.amazon.nova-micro-v1:0",
+      "eu.amazon.nova-micro-v1:0"
+    ]
+  },
+  "overview": {
+    "release_date": {
+      "value": "2024-12-05",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "context_window_tokens": {
+      "value": 128000,
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "knowledge_cutoff": {
+      "value": "Oct 2024",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "retirement": {
+      "value": "EOL no sooner than Dec 05, 2025",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "family": {
+      "value": "Amazon Nova",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "max_output_tokens": {
+      "value": 10000,
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    }
+  },
+  "evaluations": [],
+  "safety": {
+    "model_card_url": {
+      "value": "https://docs.aws.amazon.com/ai/responsible-ai/nova-micro-lite-pro/overview.html",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "AWS AI Service Card: Amazon Nova Micro, Lite and Pro"
+    }
+  }
+}

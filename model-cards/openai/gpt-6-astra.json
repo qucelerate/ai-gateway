@@ -1,0 +1,70 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "openai/gpt-6-astra",
+  "name": "GPT-6 Astra",
+  "vendor": "OpenAI",
+  "matches": {
+    "azure-ai-foundry": [
+      "gpt-6-astra"
+    ],
+    "azure-openai": [
+      "gpt-6-astra"
+    ],
+    "openai": [
+      "gpt-6-astra"
+    ]
+  },
+  "overview": {
+    "modalities_in": {
+      "value": [
+        "text",
+        "image"
+      ],
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_out": {
+      "value": [
+        "text"
+      ],
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "context_window_tokens": {
+      "value": 1050000,
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "max_output_tokens": {
+      "value": 128000,
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "knowledge_cutoff": {
+      "value": "Apr 30, 2026",
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "version": {
+      "value": "gpt-6-astra",
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    }
+  },
+  "evaluations": [],
+  "safety": {
+    "model_card_url": {
+      "value": "https://deploymentsafety.openai.com/gpt-6-astra",
+      "source_url": "https://deploymentsafety.openai.com/gpt-6-astra",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "GPT-6 Astra System Card"
+    }
+  }
+}

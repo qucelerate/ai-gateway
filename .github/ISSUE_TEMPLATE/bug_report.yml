@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in the gateway, the admin console, a client library or the docs does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security issues do not belong here**: report them privately as SECURITY.md describes.
+        Redact credentials, API keys, account IDs, prompts and tenant data from everything you paste.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Inference API
+        - Admin API or admin console
+        - Provider adapter
+        - Budgets, rate limits or accounting
+        - Catalog or model cards
+        - Batches
+        - Tracing or usage reports
+        - Client library
+        - Deployment (Docker, Compose, Kubernetes)
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release (for example v0.1.0) or the image tag you run.
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider, if any
+      description: Anthropic, OpenAI, Azure OpenAI / Foundry, Gemini / Vertex, Bedrock, an OpenAI-compatible endpoint.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The smallest request or set of steps that shows it. Use placeholders for secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and responses
+      description: Relevant gateway log lines and the problem response (its `code` and `detail`), redacted.
+      render: text

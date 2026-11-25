@@ -1,0 +1,197 @@
+name: Client compatibility
+
+# Every client's example against a published gateway: the gateway and admin
+# UI images from GHCR (`dev` is main; a release adds its version to
+# clients/release/gateways.txt) on the functional suite's Compose stack, with
+# Bedrock faked. tests/functional/specs/clients.spec.ts provisions a tenant
+# through the admin UI and runs each example's chat and streamed call; the
+# result, naming every client and gateway version, is kept as an artifact.
+# The release workflow (clients-release.yml) calls this one for the client
+# it releases and attaches the results.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/actions/apt-packages/**"
+      - ".github/actions/setup-rust/**"
+      - "clients/**"
+      - "scripts/mirror-base-images.sh"
+      - "tests/functional/**"
+      - ".github/workflows/clients-compatibility.yml"
+  pull_request:
+    paths:
+      - ".github/actions/apt-packages/**"
+      - ".github/actions/setup-rust/**"
+      - "clients/**"
+      - "scripts/mirror-base-images.sh"
+      - "tests/functional/**"
+      - ".github/workflows/clients-compatibility.yml"
+  # A new gateway image on main can break a client without a client change.
+  schedule:
+    # Daily, 13:17 UTC.
+    - cron: "17 13 * * *"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      client:
+        description: The one client to test (default all).
+        type: string
+        default: ""
+      runner:
+        description: >
+          The runner, as JSON (a label or a list of labels); default the
+          CI_RUNNER variable, else GitHub's ubuntu-latest.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-compatibility-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gateways:
+    runs-on: ${{ inputs.runner && fromJSON(inputs.runner) || vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    outputs:
+      versions: ${{ steps.list.outputs.versions }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: List the supported gateway versions
+        id: list
+        run: |
+          versions=$(grep -v '^\s*\(#\|$\)' clients/release/gateways.txt | python3 -I -c 'import json, sys; print(json.dumps(sys.stdin.read().split()))')
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
+
+  compatibility:
+    needs: gateways
+    runs-on: ${{ inputs.runner && fromJSON(inputs.runner) || vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        gateway: ${{ fromJSON(needs.gateways.outputs.versions) }}
+    # The private repository tests its own images (gateway, gateway-admin;
+    # `dev` is main). The public one, qucelerate/ai-gateway, has only the
+    # released public images (ai-gateway, ai-gateway-admin), so there `dev`
+    # means the newest release, `latest`.
+    env:
+      GATEWAY_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.repository == 'qucelerate/ai-gateway' && 'ai-gateway' || 'gateway' }}:${{ (github.repository == 'qucelerate/ai-gateway' && matrix.gateway == 'dev') && 'latest' || matrix.gateway }}
+      ADMIN_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.repository == 'qucelerate/ai-gateway' && 'ai-gateway-admin' || 'gateway-admin' }}:${{ (github.repository == 'qucelerate/ai-gateway' && matrix.gateway == 'dev') && 'latest' || matrix.gateway }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Rust toolchain
+        uses: ./.github/actions/setup-rust
+        with:
+          toolchain: "stable"
+
+      - name: Install Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install Java
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Maven
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: mvn=maven
+
+      - name: Install the C toolchain and libcurl
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: cmake=cmake libcurl4-openssl-dev
+
+      - name: Build the client examples
+        env:
+          CLIENT: ${{ inputs.client }}
+        run: clients/release/build-examples.sh "$RUNNER_TEMP/examples" ${CLIENT:+"$CLIENT"}
+
+      - name: Sign in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # ECR Public throttles anonymous pulls from shared runners; the stack's
+      # base images come from the GHCR copies container-images.yml keeps.
+      - name: Use the GHCR copies of the base images
+        env:
+          OWNER: ${{ github.repository_owner }}
+          MIRROR_LOOKUP_ONLY: "1"
+        run: scripts/mirror-base-images.sh "ghcr.io/${OWNER,,}/mirror" | tee -a "$GITHUB_ENV"
+
+      # Under the names the Compose stack runs (compose.yaml), so run.sh
+      # starts the published images instead of building its own. GHCR now
+      # and then refuses a blob it serves a moment later: retried.
+      - name: Pull the gateway under test
+        run: |
+          pull() {
+            for attempt in 1 2 3; do
+              docker pull --quiet "$1" && return 0
+              echo "pulling $1 failed (attempt $attempt)" >&2
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
+          pull "$GATEWAY_IMAGE"
+          pull "$ADMIN_IMAGE"
+          # The stack's other images too, so a failure names its image.
+          for image in ${POSTGRES_IMAGE:-} ${NODE_IMAGE:-} \
+            $(sed -n 's/^ *image: \(ghcr\.io\/nginx\/[^ ]*\)$/\1/p' compose.yaml); do
+            pull "$image"
+          done
+          docker tag "$GATEWAY_IMAGE" gateway:local
+          docker tag "$ADMIN_IMAGE" gateway-admin:local
+          echo "GATEWAY_UNDER_TEST=$(docker inspect --format '{{index .RepoDigests 0}}' "$GATEWAY_IMAGE")" >> "$GITHUB_ENV"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: tests/functional/package-lock.json
+
+      - name: Install the functional suite
+        working-directory: tests/functional
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run every client against the gateway
+        env:
+          CLIENT_EXAMPLES: ${{ runner.temp }}/examples/examples.json
+          # Beside the report: the artifact is rooted at its files' common
+          # directory, so compatibility.json sits at its top (clients-release.yml).
+          CLIENT_RESULTS: ${{ github.workspace }}/tests/functional/compatibility.json
+        run: tests/functional/run.sh --no-build specs/clients.spec.ts
+
+      - name: Keep the result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: compatibility-${{ matrix.gateway }}
+          path: |
+            tests/functional/compatibility.json
+            tests/functional/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 30

@@ -1,0 +1,19 @@
+apiVersion: v2
+name: ai-gateway
+description: QuCelerate AI Gateway (API, worker, admin UI and an optional docs site)
+type: application
+# The release workflow (.github/workflows/release-images.yml) packages the
+# chart with version and appVersion both set to the release: a v1.2.3 tag
+# publishes chart 1.2.3 with appVersion 1.2.3, whose images are tagged 1.2.3.
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://gateway.qucelerate.com
+sources:
+  - https://github.com/qucelerate/ai-gateway
+keywords:
+  - llm
+  - ai-gateway
+  - inference
+maintainers:
+  - name: QuCelerate
+    url: https://gateway.qucelerate.com

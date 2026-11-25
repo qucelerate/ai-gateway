@@ -1,0 +1,6 @@
+event: response.started
+data: {"model":"chat-default"}
+
+event: choice.delta
+data: {"choice_index":0,"content_delta":"cut","refusal_delta":null,"annotations":[]}
+

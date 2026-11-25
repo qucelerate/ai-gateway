@@ -1,0 +1,101 @@
+{
+  "name": "chat_basic",
+  "description": "A chat call sends the bearer key, a generated Idempotency-Key and the JSON body, and returns the parsed response with its request ID and usage.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true,
+    "absent_headers": [
+      "x-request-id"
+    ]
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-chat-1"
+      },
+      "json": {
+        "id": "chatcmpl-1",
+        "model": "chat-default",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Hello.",
+              "name": null,
+              "tool_call_id": null
+            },
+            "finish_reason": "stop",
+            "tool_calls": [],
+            "refusal": null,
+            "safety": [],
+            "annotations": []
+          }
+        ],
+        "usage": {
+          "input_tokens": 9,
+          "output_tokens": 2,
+          "cached_input_tokens": 0,
+          "reasoning_tokens": 0,
+          "other_tokens": null,
+          "quality": "exact",
+          "completeness": "complete"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "result": {
+      "request_id": "req-chat-1",
+      "id": "chatcmpl-1",
+      "model": "chat-default",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "Hello."
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "input_tokens": 9,
+        "output_tokens": 2,
+        "cached_input_tokens": 0,
+        "reasoning_tokens": 0,
+        "other_tokens": null,
+        "quality": "exact",
+        "completeness": "complete"
+      }
+    }
+  }
+}

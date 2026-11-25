@@ -1,0 +1,1766 @@
+{
+  "inference": {
+    "authentication_required": {
+      "causes": "The `Authorization` header is missing, empty, or not `Bearer` followed by a key; a proxy stripped it.",
+      "action": "Send `Authorization: Bearer $GATEWAY_API_KEY`. If a proxy sits in front, check that it forwards the header."
+    },
+    "invalid_api_key": {
+      "causes": "A typo or truncated key; the key was revoked, disabled or has expired; the key belongs to a different gateway deployment.",
+      "action": "Check the key in the admin console and issue a new one if it is revoked or expired. Never paste the key into an issue."
+    },
+    "insufficient_scope": {
+      "causes": "The key was issued without the scope this endpoint needs, for example a chat-only key calling embeddings or batches.",
+      "action": "Issue a key with the needed scope, or call an endpoint the key covers."
+    },
+    "idempotency_key_required": {
+      "causes": "The `Idempotency-Key` header is missing. Every inference POST needs one.",
+      "action": "Send a fresh, unique `Idempotency-Key` (a UUID) with every new request; reuse it only to retry that same request."
+    },
+    "idempotency_key_invalid": {
+      "causes": "The `Idempotency-Key` value is empty or longer than 255 characters.",
+      "action": "Use a UUID or another opaque value of 1 to 255 characters."
+    },
+    "request_too_large": {
+      "causes": "The body is over the inference body limit (4 MiB unless the operator set `GATEWAY_INFERENCE_MAX_BODY_BYTES`), or a proxy in front has a smaller limit.",
+      "action": "Send less input per request. Operators can raise `GATEWAY_INFERENCE_MAX_BODY_BYTES` (up to 64 MiB) and any proxy body limit."
+    },
+    "unsupported_media_type": {
+      "causes": "`Content-Type` is missing or not `application/json`, for example a form post.",
+      "action": "Send `Content-Type: application/json` with a JSON body."
+    },
+    "invalid_request_body": {
+      "causes": "The body is not valid JSON: a trailing comma, unescaped quotes from shell interpolation, or an empty body.",
+      "action": "Validate the JSON before sending; in shell examples, quote the body with single quotes."
+    },
+    "request_body_unprocessable": {
+      "causes": "The JSON is well formed but does not match the request schema: an unknown or misspelled field, a wrong type, or a missing required field such as `model`.",
+      "action": "Compare the body with the OpenAPI schema for the endpoint; `detail` names the field at fault."
+    },
+    "chat_request_out_of_bounds": {
+      "causes": "Too many messages, an empty message list, or a message larger than the documented bounds.",
+      "action": "Trim the conversation or split it; see the bounds in the OpenAPI document."
+    },
+    "chat_role_invalid": {
+      "causes": "A message `role` is not one the contract lists, for example a provider-specific role.",
+      "action": "Use the roles the OpenAPI document lists."
+    },
+    "chat_input_bound_exceeded": {
+      "causes": "The conversation is larger than the input bound of the model alias's route.",
+      "action": "Shorten the input, or use an alias whose model takes larger inputs."
+    },
+    "temperature_invalid": {
+      "causes": "`temperature` is below 0 or above 2.",
+      "action": "Send a value from 0 to 2, or leave it out."
+    },
+    "max_tokens_invalid": {
+      "causes": "`max_tokens` is below 1, above 4096, or above the model's output limit.",
+      "action": "Send a smaller `max_tokens`, or leave it out to use the route's default."
+    },
+    "embedding_request_out_of_bounds": {
+      "causes": "Too many inputs, an empty input list, or an input larger than the documented bounds.",
+      "action": "Send fewer or smaller inputs per request."
+    },
+    "embedding_input_bound_exceeded": {
+      "causes": "The inputs are larger than the input bound of the embedding alias's route.",
+      "action": "Shorten or split the inputs."
+    },
+    "model_unavailable": {
+      "causes": "The alias is misspelled; the organization's active catalog release has no route for that alias and operation (for example a chat alias sent to embeddings); the key's service account is not offered the alias.",
+      "action": "Check the alias against the catalog's routes in the admin console or with `GET /api/admin/v1/organizations/{org}/catalog/routes?alias=…`. Aliases are case-sensitive."
+    },
+    "stream_resume_unsupported": {
+      "causes": "The client sent `Last-Event-ID`, usually an `EventSource` reconnecting automatically.",
+      "action": "Do not reconnect a stream. Start a new request with a new `Idempotency-Key` if running it again is safe."
+    },
+    "idempotency_conflict": {
+      "causes": "The same `Idempotency-Key` was sent before with a different body or endpoint, often a client that reuses one key for every request.",
+      "action": "Generate a new key for each new request; reuse a key only for a byte-identical retry."
+    },
+    "idempotency_in_progress": {
+      "causes": "A retry arrived while the first attempt with that key is still running, typically after a client-side timeout.",
+      "action": "Do not retry with this key. Raise the client timeout; if the first answer is lost and the request is safe to run again, send it with a new key."
+    },
+    "idempotency_terminal": {
+      "causes": "A retry reused the key of a request that already finished, successfully or not. The gateway does not store answers.",
+      "action": "If the request is safe to run again, send it with a new key."
+    },
+    "quota_exceeded": {
+      "causes": "A budget covering the key (organization, team, service account or key) is used up; no budget covers the request at all (a new organization has none); an app's end user has no allowance or credit left.",
+      "action": "An administrator adds or raises a budget (admin console, Policies, Budgets), or waits for the period to reset. For an end user, `end_user`, `allowance_remaining` and `credit_balance` say what is left."
+    },
+    "rate_limit_exceeded": {
+      "causes": "A requests-per-minute or tokens-per-minute limit at the level named in `scope` (or the end user's plan, `end_user`) is reached. `limit` names which.",
+      "action": "Wait `Retry-After` seconds and retry with the same key. If it persists, spread load or ask an administrator to raise the limit at that level. A request too large for a tokens-per-minute limit never fits: shorten it."
+    },
+    "concurrency_limit_exceeded": {
+      "causes": "Too many requests are in flight for the level named in `scope` (`limit` is `max_concurrent`).",
+      "action": "Wait `Retry-After` seconds and retry with the same key; cap the client's own concurrency."
+    },
+    "provider_circuit_open": {
+      "causes": "The provider deployment behind the alias failed repeatedly, so the gateway stops calling it for a while.",
+      "action": "Wait `Retry-After` seconds and retry with the same key. Operators look at the provider's status and the gateway's circuit log lines."
+    },
+    "inference_unavailable": {
+      "causes": "The gateway cannot reach its database or another store it needs, often during a database failover or with pending migrations.",
+      "action": "Operators run `gateway doctor` and check `/readyz`. Clients do not resend automatically, since the request may have been reserved."
+    },
+    "authentication_unavailable": {
+      "causes": "The gateway could not check the key because its database is unreachable or overloaded.",
+      "action": "Operators run `gateway doctor` (`database.connect`). Nothing was reserved, so the request can be sent again once the gateway is healthy."
+    },
+    "provider_rate_limited": {
+      "causes": "The provider (not the gateway) rate-limited the request: the cloud account's quota or throughput for that model is used up.",
+      "action": "Back off; resend as a new request with a new key if safe. Operators raise the provider-side quota or add another deployment to the alias."
+    },
+    "provider_unavailable": {
+      "causes": "The provider could not be reached (DNS, TLS, network egress, proxy) or answered that it is unavailable.",
+      "action": "Resend as a new request with a new key if safe. Operators run `gateway doctor --network` to check DNS and TLS to each provider host."
+    },
+    "provider_invalid_request": {
+      "causes": "The request uses something the provider or model refuses: an option the model does not take, content the provider rejects, or a size the provider limits below the gateway's.",
+      "action": "Change the request; `detail` says what was refused. Try another alias if the model does not support the feature."
+    },
+    "provider_timeout": {
+      "causes": "The provider took longer than the gateway's timeout, often with very long outputs or an overloaded model.",
+      "action": "Do not resend automatically: the provider may have done and billed the work. Lower `max_tokens` or use streaming for long outputs."
+    },
+    "provider_failure": {
+      "causes": "The provider returned an error the gateway cannot classify, or a stream ended with a provider error.",
+      "action": "Do not resend automatically. Record `request_id`; operators look the request up in the gateway's logs."
+    },
+    "accounting_bound_exceeded": {
+      "causes": "The request's input bound is larger than its route allows, or the provider used more tokens than the bound the gateway reserved for.",
+      "action": "Shorten the request or lower `max_tokens`. If it recurs for normal requests, report it with the `request_id`."
+    },
+    "file_not_found": {
+      "causes": "The file id is wrong, belongs to another service account, or its content was purged by retention.",
+      "action": "Upload the file again, and use the id the upload returned with a key of the same service account."
+    },
+    "file_purpose_invalid": {
+      "causes": "The upload's `purpose` is not `batch`.",
+      "action": "Upload with `purpose` set to `batch`."
+    },
+    "batch_not_found": {
+      "causes": "The batch id is wrong or belongs to another service account.",
+      "action": "Use the id the batch creation returned, with a key of the same service account."
+    },
+    "batch_request_invalid": {
+      "causes": "`endpoint`, `completion_window` or `metadata` is not one the contract allows.",
+      "action": "Use `/v1/chat/completions` or `/v1/embeddings`, `24h`, and at most 16 string metadata values."
+    },
+    "batch_validation_failed": {
+      "causes": "One or more lines of the input file are invalid: bad JSON, an unknown alias, or a body that would fail as a single request.",
+      "action": "Fix the lines listed in `errors` (by line number and code) and upload the file again."
+    },
+    "batch_store_unavailable": {
+      "causes": "The operator has not configured a file store, so this gateway takes no files or batches.",
+      "action": "Operators configure the batch file store; until then, send requests one by one."
+    },
+    "end_user_required": {
+      "causes": "The service account is set up for an app with end users and the request has no `Gateway-End-User` header.",
+      "action": "Send `Gateway-End-User` with your app's stable id for the user."
+    },
+    "end_user_invalid": {
+      "causes": "The end-user id is empty, longer than 256 bytes, or has control characters.",
+      "action": "Send 1 to 256 bytes of visible UTF-8, such as your app's user id."
+    },
+    "end_user_not_registered": {
+      "causes": "The end user has no plan and the service account has no default plan.",
+      "action": "Assign the user a plan through the admin API, or set a default plan for the service account."
+    },
+    "routing_policy_denied": {
+      "causes": "The organization's routing policy excludes every provider family or location the alias's deployments use.",
+      "action": "An administrator widens the routing policy in the admin console or routes the alias to a permitted deployment."
+    },
+    "chat_tools_invalid": {
+      "causes": "A tool name or JSON schema is invalid, `tool_choice` names an unknown tool, or a tool call has no matching result (or a result has no call).",
+      "action": "Fix what `detail` names; send each tool result right after the assistant message with its call."
+    },
+    "tools_unsupported": {
+      "causes": "The alias's route does not take tools, or its provider cannot honour a tool option the request sets.",
+      "action": "Use an alias whose model supports tools, or drop the unsupported option."
+    }
+  },
+  "admin": {
+    "authentication_required": {
+      "status": [
+        401
+      ],
+      "retry": "fix",
+      "meaning": "No valid session cookie or agent token came with the request.",
+      "causes": "The session expired or was signed out; the request came from outside the admin UI without `Authorization: Bearer gwa_…`.",
+      "action": "Sign in again, or send an agent token (`gateway agent create`)."
+    },
+    "authentication_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "The gateway could not check the session or token, or cannot sign page tokens.",
+      "causes": "The database is unreachable, or the session secrets are not configured on this process.",
+      "action": "Run `gateway doctor`; check `database.connect` and the OIDC session secrets."
+    },
+    "auth_store_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "The session or sign-in store could not be read.",
+      "causes": "The database is unreachable or overloaded.",
+      "action": "Run `gateway doctor` (`database.connect`), then retry."
+    },
+    "agent_token_required": {
+      "status": [
+        401
+      ],
+      "retry": "fix",
+      "meaning": "The MCP endpoint was called without an agent token.",
+      "causes": "The MCP client is not configured with `Authorization: Bearer gwa_…`.",
+      "action": "Create a token with `gateway agent create` or in the admin console and configure the client with it."
+    },
+    "invalid_agent_token": {
+      "status": [
+        401
+      ],
+      "retry": "fix",
+      "meaning": "The agent token is unknown, revoked or expired.",
+      "causes": "A typo, a revoked token, or a token from another deployment.",
+      "action": "Create a new agent token."
+    },
+    "forbidden": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The caller is signed in but its role does not allow this action.",
+      "causes": "A member or viewer tried an owner or administrator action; an agent's role is too low.",
+      "action": "Ask an organization owner to grant the needed role, or use an account that has it."
+    },
+    "escalation_denied": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The requested role is above the caller's own.",
+      "causes": "Inviting or granting a role higher than the actor holds.",
+      "action": "Grant a role at or below your own, or ask an owner."
+    },
+    "role_escalation_denied": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The agent's role is above the caller's own.",
+      "causes": "Managing an agent with a higher role than yours.",
+      "action": "Ask an owner to manage that agent."
+    },
+    "last_owner_required": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The change would leave the organization without an enabled owner.",
+      "causes": "Removing, disabling or demoting the last owner.",
+      "action": "Grant another person the owner role first."
+    },
+    "ambiguous_team_scope": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The caller belongs to several teams and the request did not say which.",
+      "causes": "A team-scoped call without team context.",
+      "action": "Choose the team (the admin console's team switcher, or `POST /api/admin/v1/context`)."
+    },
+    "csrf_origin_or_token_required": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "A state-changing request came without the admin UI's origin and CSRF token.",
+      "causes": "Calling the session API from a script with a copied cookie; a proxy rewrites `Origin`; `GATEWAY_ORIGIN` differs from the browser's URL.",
+      "action": "Use an agent token for automation. Set `GATEWAY_ORIGIN` to the exact origin the browser uses, and let the proxy pass `Origin` and `Host` unchanged."
+    },
+    "cross_origin_request_refused": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The request's `Origin` is not the gateway's own admin origin.",
+      "causes": "`GATEWAY_ORIGIN` does not match the URL in the browser (scheme, host and port); the UI is served from another host than the API.",
+      "action": "Serve the UI and `/api/` on one origin and set `GATEWAY_ORIGIN` to it."
+    },
+    "organization_session_scope": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The session is limited to one organization and the request names another.",
+      "causes": "Signing in through an organization's own identity provider limits the session to that organization.",
+      "action": "Sign in again for the other organization."
+    },
+    "service_account_token_scope": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "A service-account token tried to reach an admin path it may not.",
+      "causes": "Automation using a service-account credential for admin work.",
+      "action": "Use an agent token with the needed role."
+    },
+    "organization_or_team_context_denied": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The caller may not switch to the organization or team it asked for.",
+      "causes": "The account is not a member of that organization or team.",
+      "action": "Ask an owner to add you, or pick an organization you belong to."
+    },
+    "enabled_membership_required": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The account is disabled or belongs to no organization.",
+      "causes": "An owner disabled the account, or the person was never added.",
+      "action": "Ask an organization owner to enable or invite the account."
+    },
+    "preprovisioned_membership_required": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "Sign-in needs an existing membership, and this identity has none.",
+      "causes": "Organizations that do not let people join on first sign-in.",
+      "action": "Ask an owner for an invitation."
+    },
+    "deployment_admin_required": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "Only the deployment's administrators may do this.",
+      "causes": "Creating or managing organizations as an ordinary owner.",
+      "action": "On the server, `gateway admin grant --email EMAIL` (or `--issuer URL --subject SUB`) makes an account a deployment administrator."
+    },
+    "deployment_sign_in_required": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The action needs a deployment-wide sign-in, not one through an organization's identity provider.",
+      "causes": "Creating an organization from a session limited to one organization.",
+      "action": "Sign in with the deployment's own sign-in (local account or deployment OIDC)."
+    },
+    "self_serve_organizations_disabled": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "Only deployment administrators create organizations on this gateway.",
+      "causes": "`GATEWAY_SELF_SERVE_ORGANIZATIONS` is off (the default).",
+      "action": "Ask a deployment administrator, or set `GATEWAY_SELF_SERVE_ORGANIZATIONS=true`."
+    },
+    "sso_required": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The organization requires sign-in through its identity provider, so passwords are refused.",
+      "causes": "Signing in with a local password to an organization that requires SSO.",
+      "action": "Sign in with the identity provider. If it is broken, the operator runs `gateway sign-in-policy allow-passwords --organization SLUG`."
+    },
+    "invalid_credentials": {
+      "status": [
+        401
+      ],
+      "retry": "fix",
+      "meaning": "The email address or password is not correct.",
+      "causes": "A typo, a changed password, or an account that signs in with an identity provider.",
+      "action": "Check the address; an operator can send a reset link with `gateway user reset-password --email EMAIL`."
+    },
+    "current_password_incorrect": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The current password given for a password change is wrong.",
+      "causes": "A typo, or the password changed in another session.",
+      "action": "Enter the current password, or use a reset link."
+    },
+    "too_many_attempts": {
+      "status": [
+        429
+      ],
+      "retry": "later",
+      "meaning": "Too many failed sign-in attempts from this address or for this account.",
+      "causes": "Repeated wrong passwords; many people behind one address without `GATEWAY_TRUST_X_FORWARDED_FOR` set behind a proxy.",
+      "action": "Wait the time `detail` names. Behind a reverse proxy that sets `X-Forwarded-For`, set `GATEWAY_TRUST_X_FORWARDED_FOR=true`."
+    },
+    "sign_in_busy": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "Too many sign-ins are being checked at once.",
+      "causes": "A burst of sign-ins; password hashing is deliberately slow.",
+      "action": "Retry in a moment."
+    },
+    "sign_in_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "fix",
+      "meaning": "The gateway has no way to sign in configured.",
+      "causes": "Neither OIDC nor local accounts are set up.",
+      "action": "Configure OIDC, or set `GATEWAY_ORIGIN` and the session secrets for local accounts."
+    },
+    "local_accounts_disabled": {
+      "status": [
+        404,
+        409
+      ],
+      "retry": "fix",
+      "meaning": "This gateway does not offer password accounts.",
+      "causes": "`GATEWAY_LOCAL_ACCOUNTS=false`, or the session secrets are missing.",
+      "action": "Sign in through OIDC, or turn local accounts on."
+    },
+    "not_a_local_account": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The account signs in with an identity provider, which keeps its password.",
+      "causes": "Trying to set or reset a password for an OIDC account.",
+      "action": "Change the password at the identity provider."
+    },
+    "account_exists": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "An account with this email address was just created.",
+      "causes": "Two setup or invitation submissions raced.",
+      "action": "Sign in with that account's password."
+    },
+    "local_account_not_found": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "No member of this organization with a password account has that id.",
+      "causes": "A stale id, or the person signs in with an identity provider.",
+      "action": "List the organization's local accounts again."
+    },
+    "reset_link_invalid": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "The password reset link is not valid, was used already, or has expired.",
+      "causes": "Links work once and for 24 hours.",
+      "action": "Ask for a new link; an operator runs `gateway user reset-password --email EMAIL`."
+    },
+    "reset_requires_operator": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "The person also belongs to organizations you do not own, or administers the gateway, so you cannot reset their password.",
+      "causes": "An owner resetting a shared or administrator account.",
+      "action": "The operator runs `gateway user reset-password --email EMAIL` on the server."
+    },
+    "setup_link_invalid": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "The first-run setup link is not valid or has expired.",
+      "causes": "Setup links expire after 24 hours, or the gateway restarted with a new link.",
+      "action": "Run `gateway setup-link` for a new link, or use the one the latest start logged."
+    },
+    "setup_already_done": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The gateway is already set up: an organization exists.",
+      "causes": "Opening an old setup link after setup finished.",
+      "action": "Sign in. A locked-out owner gets a reset link with `gateway user reset-password --email EMAIL`."
+    },
+    "identity_provider_required": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The organization cannot require its identity provider before one is set up and tested.",
+      "causes": "Turning on SSO-only sign-in too early.",
+      "action": "Set up and test the identity provider first."
+    },
+    "oidc_disabled": {
+      "status": [
+        503
+      ],
+      "retry": "fix",
+      "meaning": "OIDC sign-in is not enabled on this gateway.",
+      "causes": "`OIDC_ENABLED` is false or the OIDC settings are incomplete.",
+      "action": "Use local accounts, or configure OIDC."
+    },
+    "oidc_provider_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "The identity provider could not be reached.",
+      "causes": "Network egress, DNS or TLS to the issuer fails, or the provider is down.",
+      "action": "Check that the issuer URL resolves and is reachable from the gateway, then retry."
+    },
+    "oidc_configuration_invalid": {
+      "status": [
+        503
+      ],
+      "retry": "fix",
+      "meaning": "The identity provider's discovery document or keys are not usable.",
+      "causes": "A wrong `OIDC_ISSUER`, or a provider that publishes no usable signing keys.",
+      "action": "Check `OIDC_ISSUER` against the provider's discovery URL."
+    },
+    "oidc_backend_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "The token exchange with the identity provider failed to complete.",
+      "causes": "The provider is unreachable or timed out.",
+      "action": "Retry; if it persists, check connectivity to the provider."
+    },
+    "oidc_backend_rejected": {
+      "status": [
+        401
+      ],
+      "retry": "fix",
+      "meaning": "The identity provider rejected the token exchange.",
+      "causes": "A wrong client id or secret, a redirect URI the provider does not have registered, or an expired code.",
+      "action": "Check `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` and `OIDC_REDIRECT_URI` against the provider's registration."
+    },
+    "claim_validation_failed": {
+      "status": [
+        401
+      ],
+      "retry": "fix",
+      "meaning": "The identity token's claims did not validate.",
+      "causes": "A wrong audience or issuer, or clock skew between the gateway and the provider.",
+      "action": "Check `OIDC_AUDIENCE` and `OIDC_ISSUER`, and that the server's clock is synchronized (`gateway doctor` checks `database.clock_skew`)."
+    },
+    "missing_authorization_code": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The OIDC callback arrived without an authorization code.",
+      "causes": "The provider returned an error, or the callback URL was opened directly.",
+      "action": "Start the sign-in again from the admin UI."
+    },
+    "invalid_or_replayed_state": {
+      "status": [
+        401
+      ],
+      "retry": "fix",
+      "meaning": "The sign-in state is unknown, expired, or was used already.",
+      "causes": "The browser's back button, a second tab, or a sign-in left open too long.",
+      "action": "Start the sign-in again."
+    },
+    "invalid_transaction": {
+      "status": [
+        401
+      ],
+      "retry": "fix",
+      "meaning": "The sign-in transaction could not be read.",
+      "causes": "The session secrets changed during the sign-in, or the request was tampered with.",
+      "action": "Start the sign-in again."
+    },
+    "browser_binding_required": {
+      "status": [
+        401
+      ],
+      "retry": "fix",
+      "meaning": "The sign-in did not come back in the browser that started it.",
+      "causes": "Cookies blocked, a different browser, or a proxy that drops cookies.",
+      "action": "Allow cookies for the gateway's origin and sign in from one browser."
+    },
+    "auth_crypto_failed": {
+      "status": [
+        500
+      ],
+      "retry": "none",
+      "meaning": "The gateway could not seal or open sign-in data.",
+      "causes": "Session secrets are malformed.",
+      "action": "Check `OIDC_SESSION_HMAC_SECRET` and `OIDC_SESSION_ENCRYPTION_KEY` (32 bytes or more each)."
+    },
+    "identity_store_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "The account store could not be written during sign-in.",
+      "causes": "The database is unreachable.",
+      "action": "Run `gateway doctor` (`database.connect`), then retry."
+    },
+    "security_audit_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "The security audit record for the sign-in could not be written, so the sign-in was refused.",
+      "causes": "The database is unreachable.",
+      "action": "Run `gateway doctor`, then retry."
+    },
+    "provider_test_session_required": {
+      "status": [
+        403
+      ],
+      "retry": "fix",
+      "meaning": "Only the owner who started an identity-provider test may finish it.",
+      "causes": "The test sign-in completed as a different person.",
+      "action": "Start the test again and complete it with your own account."
+    },
+    "identity_provider_changed": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The identity-provider configuration changed while it was being tested.",
+      "causes": "Another owner saved a change during the test.",
+      "action": "Test it again."
+    },
+    "photo_not_found": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "The account has no profile photo.",
+      "causes": "No photo at the identity provider, or photos are not enabled.",
+      "action": "Nothing to do; the UI shows initials."
+    },
+    "invitation_invalid": {
+      "status": [
+        403,
+        404
+      ],
+      "retry": "fix",
+      "meaning": "The invitation is not valid, was used already, has expired, or must be accepted by its addressee.",
+      "causes": "An old or forwarded link.",
+      "action": "Ask an owner for a new invitation."
+    },
+    "invalid_request": {
+      "status": [
+        400,
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The request is not valid for this endpoint.",
+      "causes": "A malformed body, a bad value, or an option the endpoint does not take; `detail` says which.",
+      "action": "Fix what `detail` names, comparing with the admin OpenAPI documents."
+    },
+    "request_body_unprocessable": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The JSON does not match the endpoint's schema.",
+      "causes": "An unknown or misspelled field, or a wrong type.",
+      "action": "Compare the body with the admin OpenAPI documents."
+    },
+    "request_body_invalid": {
+      "status": [
+        415
+      ],
+      "retry": "fix",
+      "meaning": "The body's media type is not one the endpoint accepts.",
+      "causes": "A catalog manifest posted without `Content-Type: application/json`.",
+      "action": "Send the documented `Content-Type`."
+    },
+    "invalid_query": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "Query parameters are missing, unknown or malformed.",
+      "causes": "A misspelled parameter, or a value out of range.",
+      "action": "Check the parameters against the admin OpenAPI documents; `detail` says which."
+    },
+    "idempotency_key_required": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The mutation needs an `Idempotency-Key` header.",
+      "causes": "Admin mutations are idempotent and need a key.",
+      "action": "Send a new UUID as `Idempotency-Key` with each mutation."
+    },
+    "idempotency_key_invalid": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The `Idempotency-Key` is empty or too long.",
+      "causes": "An empty header or a value over 255 characters.",
+      "action": "Send a UUID."
+    },
+    "idempotency_conflict": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The key was used before with a different request.",
+      "causes": "One key reused for several different mutations.",
+      "action": "Use a new key for each new mutation."
+    },
+    "idempotency_in_progress": {
+      "status": [
+        409
+      ],
+      "retry": "later",
+      "meaning": "The first request with this key is still running.",
+      "causes": "A retry sent before the first attempt finished.",
+      "action": "Wait and retry with the same key; once the first finishes, the retry returns its result."
+    },
+    "if_match_required": {
+      "status": [
+        428
+      ],
+      "retry": "fix",
+      "meaning": "The update needs an `If-Match` header with the resource's current version.",
+      "causes": "A conditional update sent without `If-Match`.",
+      "action": "Read the resource, then send its `ETag` as `If-Match`."
+    },
+    "if_match_invalid": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The `If-Match` value is not a version the gateway issued.",
+      "causes": "A hand-written or truncated value.",
+      "action": "Send the `ETag` from the latest read."
+    },
+    "version_conflict": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The resource changed since you read it.",
+      "causes": "Another person or process updated it in between.",
+      "action": "Read it again, reapply your change, and send the new version in `If-Match`."
+    },
+    "conflict": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The request conflicts with existing data, such as a duplicate name.",
+      "causes": "Creating something that exists, or referring to something deleted.",
+      "action": "Read the current state and adjust the request."
+    },
+    "invalid_state": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The resource's state does not permit this operation.",
+      "causes": "Acting on a revoked, disabled or deleted resource.",
+      "action": "Read the resource's state first."
+    },
+    "not_found": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "No such resource, or it is in an organization the caller cannot see.",
+      "causes": "A wrong id or path, a resource in another organization, or an unknown route.",
+      "action": "Check the id and the organization in the path."
+    },
+    "database_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "The database could not serve the request.",
+      "causes": "The database is unreachable, failing over, or out of connections; migrations are pending.",
+      "action": "Run `gateway doctor` (`database.connect`, `database.migrations`), then retry."
+    },
+    "service_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "A store the endpoint needs could not be read; `detail` names it.",
+      "causes": "The database is unreachable or failing over.",
+      "action": "Run `gateway doctor`, then retry."
+    },
+    "audit_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "The audit log could not be written, so the change was refused.",
+      "causes": "The database is unreachable.",
+      "action": "Run `gateway doctor`, then retry."
+    },
+    "invalid_audit_query": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The audit-log query is not valid.",
+      "causes": "An unknown filter or a malformed time range.",
+      "action": "Fix the query parameters."
+    },
+    "invalid_stored_role": {
+      "status": [
+        500
+      ],
+      "retry": "none",
+      "meaning": "A stored role is not one the gateway knows.",
+      "causes": "The database was edited by hand, or an older image runs against a newer schema.",
+      "action": "Run the image that matches the schema; report it with the `request_id` if it persists."
+    },
+    "safe_serialization": {
+      "status": [
+        500
+      ],
+      "retry": "none",
+      "meaning": "Audit or replay metadata could not be serialized.",
+      "causes": "An internal error.",
+      "action": "Report it with the `request_id`."
+    },
+    "invalid_audit_actor": {
+      "status": [
+        500
+      ],
+      "retry": "none",
+      "meaning": "The audit actor for the change is not valid.",
+      "causes": "An internal error.",
+      "action": "Report it with the `request_id`."
+    },
+    "invalid_page_token": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The `page_token` is not one the gateway issued.",
+      "causes": "A truncated or hand-built token.",
+      "action": "Start from the first page and follow `next_page_token`."
+    },
+    "invalid_page_token_signature": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The `page_token`'s signature does not verify.",
+      "causes": "An edited token, or session secrets that changed since it was issued.",
+      "action": "Start from the first page."
+    },
+    "page_token_scope_mismatch": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The `page_token` belongs to another list or organization.",
+      "causes": "Reusing a token across endpoints.",
+      "action": "Use each token only with the list that issued it."
+    },
+    "page_token_query_mismatch": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The query changed since the `page_token` was issued.",
+      "causes": "Changing filters while paging.",
+      "action": "Keep the filters fixed while paging, or start again."
+    },
+    "page_token_too_large": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The `page_token` is longer than allowed.",
+      "causes": "A corrupted token.",
+      "action": "Start from the first page."
+    },
+    "pagination_limit_invalid": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The page size is out of range.",
+      "causes": "A `page_size` or `limit` below 1 or above the maximum.",
+      "action": "Use a value in the documented range."
+    },
+    "page_token_stale": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "Prices changed since the page token was issued.",
+      "causes": "Paging through prices while a sync ran.",
+      "action": "Start from the first page."
+    },
+    "unsupported_mcp_protocol_version": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The MCP client asked for a protocol version the gateway does not speak.",
+      "causes": "An old or very new MCP client.",
+      "action": "Use a client that supports a protocol version the gateway lists."
+    },
+    "organization_not_found": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "No such organization.",
+      "causes": "A wrong id or slug, or a deleted organization.",
+      "action": "List organizations to find the right one."
+    },
+    "organization_suspended": {
+      "status": [
+        403,
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The organization is suspended.",
+      "causes": "A deployment administrator suspended it.",
+      "action": "A deployment administrator restores it."
+    },
+    "organization_active": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The organization must be suspended first.",
+      "causes": "Deleting an active organization.",
+      "action": "Suspend it, then delete it."
+    },
+    "organization_deleted": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The organization is deleted.",
+      "causes": "Acting on a soft-deleted organization.",
+      "action": "Restore it first."
+    },
+    "last_organization": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The deployment's last organization cannot be deleted.",
+      "causes": "Deleting the only organization.",
+      "action": "Create another organization first, or keep it."
+    },
+    "slug_taken": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "Another organization has this short name.",
+      "causes": "Slugs are unique on a deployment.",
+      "action": "Choose another short name."
+    },
+    "confirmation_mismatch": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The typed confirmation does not match the organization's short name.",
+      "causes": "A typo in the confirmation field.",
+      "action": "Type the short name exactly."
+    },
+    "owner_unavailable": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The account with this email address is disabled, so it cannot become owner.",
+      "causes": "Naming a disabled account as an organization's first owner.",
+      "action": "Enable the account, or name another person."
+    },
+    "invitations_unavailable": {
+      "status": [
+        409,
+        503
+      ],
+      "retry": "fix",
+      "meaning": "Invitations cannot be made on this gateway.",
+      "causes": "`GATEWAY_ORIGIN` is not set, or there is no way to sign in (neither OIDC nor local accounts).",
+      "action": "Set `GATEWAY_ORIGIN` and configure a sign-in method."
+    },
+    "invitation_not_pending": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The invitation was already accepted, revoked, or has expired.",
+      "causes": "Acting on an old invitation.",
+      "action": "Create a new invitation."
+    },
+    "invalid_invitation": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The invitation request is not valid.",
+      "causes": "An invalid email address, role, or validity period.",
+      "action": "Fix the field `detail` names."
+    },
+    "active_api_keys_exist": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "A service account cannot be deleted while it has live API keys.",
+      "causes": "Deleting a service account before revoking its keys.",
+      "action": "Revoke every key of the service account first."
+    },
+    "invalid_agent": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The agent request is not valid.",
+      "causes": "An invalid name, role or expiry.",
+      "action": "Fix the field `detail` names."
+    },
+    "agent_name_taken": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "An agent with this name exists in the organization.",
+      "causes": "Names are unique per organization.",
+      "action": "Choose another name, or create a token for the existing agent."
+    },
+    "too_many_agents": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The organization has the most agents it may have (200).",
+      "causes": "Agents are never reused.",
+      "action": "Disable or delete agents you no longer need."
+    },
+    "too_many_agent_tokens": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The agent has the most live tokens it may have (20).",
+      "causes": "Tokens created without revoking old ones.",
+      "action": "Revoke a token first."
+    },
+    "agent_disabled": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The agent is disabled.",
+      "causes": "Creating a token for a disabled agent.",
+      "action": "Enable the agent first."
+    },
+    "invalid_manifest": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The catalog manifest is not valid.",
+      "causes": "A schema error, an unknown provider family, or a route to an undeclared deployment; `detail` says which.",
+      "action": "Fix the manifest and apply it again (`gateway catalog apply --organization ORG --file FILE` or the admin API)."
+    },
+    "release_exists": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "A release with this manifest's digest exists already.",
+      "causes": "Applying the same manifest twice.",
+      "action": "Activate the existing release instead."
+    },
+    "no_active_release": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "The organization has no active catalog release.",
+      "causes": "A new organization, or a release that was never activated.",
+      "action": "Apply and activate a catalog release."
+    },
+    "provider_account_not_found": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "No catalog release of this organization declares that adapter instance key.",
+      "causes": "A typo in the key, or a provider account not in the catalog.",
+      "action": "Declare the provider account in the catalog first."
+    },
+    "unknown_provider_account": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The active catalog release declares no provider account with this key.",
+      "causes": "A typo, or the account is only in an inactive release.",
+      "action": "Use a key from the active release's provider accounts."
+    },
+    "unknown_deployment": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "No catalog release prices this operation on a deployment of that name.",
+      "causes": "A typo in the deployment name, or the wrong operation.",
+      "action": "List the release's deployments and use one of their names."
+    },
+    "deployment_not_found": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "The active release has no deployment of this model on this provider family.",
+      "causes": "The model is not deployed through that provider.",
+      "action": "Add a deployment for it to the catalog."
+    },
+    "invalid_credential": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The provider credential is not valid for its provider family.",
+      "causes": "A missing field, a malformed key, or the wrong credential kind.",
+      "action": "Fix the field `detail` names."
+    },
+    "credential_encryption_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "fix",
+      "meaning": "Secrets cannot be stored: no credential encryption key is configured.",
+      "causes": "`GATEWAY_CREDENTIAL_ENCRYPTION_KEY` (or `GATEWAY_CREDENTIAL_KMS_KEY_ID`) is not set on this process.",
+      "action": "Set `GATEWAY_CREDENTIAL_ENCRYPTION_KEY` to 32 random bytes in base64url on every process, and restart. `gateway doctor` reports it as `credentials.encryption_key`."
+    },
+    "invalid_price_override": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The price override is not valid.",
+      "causes": "A negative price, or a price for a usage dimension the provider family does not report.",
+      "action": "Fix the field `detail` names."
+    },
+    "price_override_incompatible": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "A price override sets a price the release's provider family does not report usage for.",
+      "causes": "Activating a release that changes a deployment's provider family.",
+      "action": "Revoke the override, then activate the release."
+    },
+    "already_revoked": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The price override is already revoked.",
+      "causes": "Revoking twice.",
+      "action": "Nothing to do."
+    },
+    "invalid_price_mapping": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The price mapping is not valid.",
+      "causes": "An unknown published item or a mismatched unit.",
+      "action": "Pick an item from the price source's observations."
+    },
+    "unknown_price_source": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "No price source with this id is configured.",
+      "causes": "A typo, or a source turned off with `GATEWAY_PUBLIC_PRICE_SOURCES`.",
+      "action": "List the price sources and use one of them."
+    },
+    "price_fetch_too_soon": {
+      "status": [
+        429
+      ],
+      "retry": "later",
+      "meaning": "The price source was fetched too recently.",
+      "causes": "Repeated manual fetches.",
+      "action": "Wait and retry later."
+    },
+    "not_held": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The price is no longer held.",
+      "causes": "Another administrator dismissed or adopted it.",
+      "action": "Reload the list of held prices."
+    },
+    "catalog_sync_in_progress": {
+      "status": [
+        409
+      ],
+      "retry": "later",
+      "meaning": "A model discovery for this provider account is already queued or running.",
+      "causes": "Requesting discovery twice.",
+      "action": "Wait for the running job to finish."
+    },
+    "config_not_pinned": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The organization is not pinned to a configuration version.",
+      "causes": "Unpinning an organization that has no pin.",
+      "action": "Nothing to do; `gateway config list --organization ID` shows the versions."
+    },
+    "invalid_auto_offer": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The automatic model offer settings are not valid.",
+      "causes": "An invalid location or adapter instance key.",
+      "action": "Fix the field `detail` names."
+    },
+    "invalid_routing_policy": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The routing policy is not valid.",
+      "causes": "An unknown provider family or location.",
+      "action": "Fix the field `detail` names."
+    },
+    "invalid_batch_setting": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The batch setting is not valid.",
+      "causes": "A missing bucket, role or region for staged batches.",
+      "action": "Fix the field `detail` names."
+    },
+    "batch_staging_unsupported": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The provider account's family runs no batch jobs staged in a bucket.",
+      "causes": "Configuring staging for a provider that does not use it.",
+      "action": "Configure staging only for providers that need it."
+    },
+    "batch_results_unavailable": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "The batch has no such results yet, or they were purged.",
+      "causes": "Reading results before the batch finished, or after retention removed them.",
+      "action": "Check the batch's status; results are kept for the retention period only."
+    },
+    "invalid_agreement_request": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The agreement request is not valid.",
+      "causes": "An invalid adapter instance key or model list.",
+      "action": "Fix the field `detail` names."
+    },
+    "agreements_unsupported": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The provider account's family has no model agreements; only Bedrock's do.",
+      "causes": "Asking for agreements on a non-Bedrock account.",
+      "action": "Nothing to accept for this provider."
+    },
+    "agreements_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "fix",
+      "meaning": "The gateway cannot reach this provider account: it has no usable credential.",
+      "causes": "No credential configured or stored for the account.",
+      "action": "Configure the account's credential, then retry."
+    },
+    "agreements_need_tenant_credential": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "Accepting agreements needs the organization's own credential for the account.",
+      "causes": "The account uses a process-wide credential.",
+      "action": "Store a credential for the account through the catalog API."
+    },
+    "agreement_permission_missing": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The account's credential may not accept AWS Marketplace agreements; nothing was accepted.",
+      "causes": "The role lacks the Marketplace permissions `detail` names.",
+      "action": "Grant the permissions, then accept again."
+    },
+    "agreement_offer_changed": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "A model's offer changed since you listed it.",
+      "causes": "The provider updated the offer terms.",
+      "action": "List the agreements again and accept the current offers."
+    },
+    "provider_unavailable": {
+      "status": [
+        502
+      ],
+      "retry": "later",
+      "meaning": "The provider failed to list the account's models.",
+      "causes": "Provider outage, network egress, or a credential the provider refuses.",
+      "action": "Retry; `gateway doctor --network` checks DNS and TLS to the provider hosts."
+    },
+    "invalid_model": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The model identifier is empty, too long, or has control characters.",
+      "causes": "A malformed path segment.",
+      "action": "Use the model's catalog identifier."
+    },
+    "invalid_repository": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The repository is not a Hugging Face model repository id (owner/name).",
+      "causes": "A URL instead of an id, or a typo.",
+      "action": "Send `owner/name`."
+    },
+    "repository_not_found": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The Hub has no public model repository by that id.",
+      "causes": "A typo, or a private repository.",
+      "action": "Use a public repository's id."
+    },
+    "import_disabled": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "Hugging Face imports are off.",
+      "causes": "`GATEWAY_MODEL_CARD_HUB_URL` is not set.",
+      "action": "Set `GATEWAY_MODEL_CARD_HUB_URL` to turn imports on."
+    },
+    "import_unusable": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The Hub's model card cannot be imported.",
+      "causes": "The card is missing or malformed; `detail` says why.",
+      "action": "Write the card by hand, or import another repository."
+    },
+    "hub_unavailable": {
+      "status": [
+        502
+      ],
+      "retry": "later",
+      "meaning": "The Hugging Face Hub could not be read.",
+      "causes": "The Hub is down, or the gateway has no egress to it.",
+      "action": "Retry later."
+    },
+    "invalid_note": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The note is too long or has control characters.",
+      "causes": "More than 4000 characters.",
+      "action": "Shorten the note."
+    },
+    "invalid_master": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The model master id is not valid.",
+      "causes": "Not `vendor/model` in lowercase, and not `org/slug`.",
+      "action": "Use the documented id form."
+    },
+    "invalid_name": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The name is empty, too long, or has control characters.",
+      "causes": "More than 120 characters.",
+      "action": "Use 1 to 120 characters."
+    },
+    "invalid_family": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "Unknown provider family.",
+      "causes": "A typo.",
+      "action": "Use a provider family the catalog lists."
+    },
+    "invalid_operation": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The operations list is not valid.",
+      "causes": "An operation other than chat, embeddings, chat_batch or embeddings_batch.",
+      "action": "List only supported operations."
+    },
+    "invalid_alias": {
+      "status": [
+        400
+      ],
+      "retry": "fix",
+      "meaning": "The alias is empty, too long, or only whitespace.",
+      "causes": "Aliases are 1 to 128 bytes.",
+      "action": "Use a valid alias."
+    },
+    "unknown_master": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "No model card or organization record has that id.",
+      "causes": "A typo, or a record that was removed.",
+      "action": "List the model masters and use one of their ids."
+    },
+    "modality_mismatch": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The master's modality does not match the operations the model's deployments serve.",
+      "causes": "Linking a chat model to an embedding master or the reverse.",
+      "action": "Link the model to a master of the right kind."
+    },
+    "master_in_use": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "Links still name this record.",
+      "causes": "Deleting a master that models are linked to.",
+      "action": "Clear or change those links first."
+    },
+    "batch_not_found": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The evaluation's `batch_id` is not a batch of this organization.",
+      "causes": "A typo, or a batch of another organization.",
+      "action": "Use a batch id from this organization."
+    },
+    "batch_unusable": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The batch cannot be used for an evaluation.",
+      "causes": "The batch has not finished, failed, or its results were purged.",
+      "action": "Use a completed batch whose results are still kept."
+    },
+    "invalid_evaluation_set": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The evaluation set is not valid.",
+      "causes": "A missing name or an invalid item.",
+      "action": "Fix the field `detail` names."
+    },
+    "file_store_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "fix",
+      "meaning": "The batch file store is not configured or could not be read.",
+      "causes": "No file store configured, or the store is unreachable.",
+      "action": "Configure the file store, then retry."
+    },
+    "verification_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "Credential verification is not available.",
+      "causes": "The gateway cannot reach the provider to verify, or verification is not configured.",
+      "action": "Retry; `gateway doctor --network` checks reachability."
+    },
+    "onboarding_unavailable": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "Onboarding is not available on this gateway.",
+      "causes": "The `GATEWAY_ONBOARDING_*` settings are not configured.",
+      "action": "Configure onboarding, or set up provider accounts in the catalog directly."
+    },
+    "invalid_onboarding_input": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The onboarding input is not valid.",
+      "causes": "A missing or malformed field.",
+      "action": "Fix the field `detail` names."
+    },
+    "invalid_budget": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The budget is not valid.",
+      "causes": "A negative amount, an unknown currency, or an invalid period.",
+      "action": "Fix the field `detail` names."
+    },
+    "invalid_rate_limit": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The rate-limit policy is not valid.",
+      "causes": "A zero or negative limit, or no limit set.",
+      "action": "Fix the field `detail` names."
+    },
+    "invalid_amount": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The amount is not valid.",
+      "causes": "A negative `amount_minor`.",
+      "action": "Send a non-negative amount in minor units."
+    },
+    "reconciliation_not_open": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The reconciliation item is not open.",
+      "causes": "Resolving an item twice.",
+      "action": "Reload the list."
+    },
+    "reconciliation_busy": {
+      "status": [
+        409
+      ],
+      "retry": "later",
+      "meaning": "The reservation is being settled right now.",
+      "causes": "The worker is settling it.",
+      "action": "Retry the request."
+    },
+    "end_user_settings_missing": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The service account has no end-user settings yet.",
+      "causes": "Creating plans or users before the settings.",
+      "action": "Set the service account's end-user settings first."
+    },
+    "currency_locked": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The currency cannot change once a plan or a credit grant exists.",
+      "causes": "Changing the end-user currency late.",
+      "action": "Keep the currency, or use a new service account."
+    },
+    "plan_in_use": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The plan is the default plan or an end user is on it.",
+      "causes": "Deleting a plan still in use.",
+      "action": "Move users to another plan and change the default first."
+    },
+    "credit_reference_conflict": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "A different credit grant already has this reference.",
+      "causes": "Reusing a reference for a different grant.",
+      "action": "Use a unique reference per grant."
+    },
+    "reversal_reference_conflict": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "A different reversal already has this reference.",
+      "causes": "Reusing a reference for a different reversal.",
+      "action": "Use a unique reference per reversal."
+    },
+    "invalid_trace_policy": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The tracing policy is not valid.",
+      "causes": "An unknown mode or an out-of-range sampling value.",
+      "action": "Fix the field `detail` names."
+    },
+    "trace_content_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "The trace's content is stored but cannot be read now.",
+      "causes": "The trace store is unreachable, or its credentials or encryption keys are missing on this process.",
+      "action": "Run `gateway doctor` (`trace_store.reachable`, `credentials.encryption_key`)."
+    },
+    "invalid_retention_policy": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The retention policy is not valid.",
+      "causes": "A period out of range.",
+      "action": "Fix the field `detail` names."
+    },
+    "invalid_usage_export": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The usage export settings are not valid.",
+      "causes": "A missing bucket or an invalid prefix.",
+      "action": "Fix the field `detail` names."
+    },
+    "destination_unverified": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The export destination could not be verified: the verification object could not be written.",
+      "causes": "The bucket does not exist, or the gateway's identity may not write to it.",
+      "action": "Grant write access to the bucket and try again."
+    },
+    "invalid_webhook_endpoint": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The webhook endpoint is not valid.",
+      "causes": "A non-https URL, or unknown event types.",
+      "action": "Fix the field `detail` names."
+    },
+    "webhook_endpoint_limit_reached": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The organization has the most webhook endpoints it may have.",
+      "causes": "Endpoints never removed.",
+      "action": "Delete an endpoint you no longer use."
+    },
+    "webhook_delivery_not_parked": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "Only a parked delivery can be redelivered.",
+      "causes": "Redelivering one that is pending or delivered.",
+      "action": "Wait until it is parked, or leave it."
+    },
+    "dns_unavailable": {
+      "status": [
+        503
+      ],
+      "retry": "later",
+      "meaning": "The DNS lookup for domain verification failed.",
+      "causes": "A transient resolver failure.",
+      "action": "Try again in a moment."
+    },
+    "domain_exists": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "The organization lists this domain already.",
+      "causes": "Adding a domain twice.",
+      "action": "Nothing to do."
+    },
+    "domain_claimed": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "Another organization on this gateway verified this domain.",
+      "causes": "A domain can belong to one organization.",
+      "action": "Ask the deployment's administrators."
+    },
+    "domain_not_found": {
+      "status": [
+        404
+      ],
+      "retry": "fix",
+      "meaning": "No such domain in this organization.",
+      "causes": "A stale id.",
+      "action": "Reload the list of domains."
+    },
+    "invalid_identity_provider": {
+      "status": [
+        422
+      ],
+      "retry": "fix",
+      "meaning": "The identity-provider configuration is not valid.",
+      "causes": "A non-https issuer, or a missing client id.",
+      "action": "Fix the field `detail` names."
+    },
+    "nothing_to_test": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "There is no saved identity-provider change to test.",
+      "causes": "Testing before saving.",
+      "action": "Save the configuration first."
+    },
+    "tested_by_another_owner": {
+      "status": [
+        409
+      ],
+      "retry": "fix",
+      "meaning": "Another owner saved this change; only they can test it.",
+      "causes": "Two owners editing the identity provider.",
+      "action": "Ask them to test it, or save it again yourself."
+    }
+  }
+}

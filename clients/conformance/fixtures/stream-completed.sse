@@ -1,0 +1,18 @@
+event: response.started
+data: {"model":"chat-default"}
+
+event: choice.delta
+data: {"choice_index":0,"content_delta":"Hel","refusal_delta":null,"annotations":[]}
+
+event: choice.delta
+data: {"choice_index":0,"content_delta":"lo","refusal_delta":null,"annotations":[]}
+
+event: choice.finished
+data: {"choice_index":0,"finish_reason":"stop"}
+
+event: usage
+data: {"input_tokens":9,"output_tokens":2,"cached_input_tokens":0,"reasoning_tokens":0,"other_tokens":null,"quality":"exact","completeness":"complete"}
+
+event: response.completed
+data: {"model":"chat-default","usage":{"input_tokens":9,"output_tokens":2,"cached_input_tokens":0,"reasoning_tokens":0,"other_tokens":null,"quality":"exact","completeness":"complete"}}
+

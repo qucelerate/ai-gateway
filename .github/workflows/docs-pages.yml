@@ -1,0 +1,80 @@
+name: Docs site (GitHub Pages)
+
+# Publishes apps/docs to GitHub Pages at https://gateway.qucelerate.com
+# (apps/docs/public/CNAME) from each release tag, or by hand from a tag or
+# branch. Only in the public repository: elsewhere both jobs are skipped.
+# The repository's Pages source must be "GitHub Actions".
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time; a newer one waits rather than cancels.
+concurrency:
+  group: docs-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/docs
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Each page's "Last updated" date is its last commit's.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: apps/docs/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Schemas, examples, version links and the generated error reference.
+      - name: Check the contract
+        run: npm run check:contract
+
+      - name: Build documentation
+        run: npm run build
+
+      # The build's buildEnd hook writes the AI-readable files.
+      - name: Check the published extras
+        run: |
+          for file in llms.txt llms-full.txt index.md install/agents.md support/errors.md sitemap.xml; do
+            test -s ".vitepress/dist/$file" || { echo "::error::missing $file"; exit 1; }
+          done
+          grep -qx 'gateway.qucelerate.com' .vitepress/dist/CNAME \
+            || { echo "::error::CNAME does not name gateway.qucelerate.com"; exit 1; }
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: apps/docs/.vitepress/dist
+
+  deploy:
+    needs: build
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

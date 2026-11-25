@@ -1,0 +1,53 @@
+name: Go client
+
+on:
+  push:
+    # main only: a pull request runs this for its branch.
+    branches: [main]
+    paths:
+      - "clients/go/**"
+      - "clients/conformance/**"
+      - ".github/workflows/clients-go.yml"
+  pull_request:
+    paths:
+      - "clients/go/**"
+      - "clients/conformance/**"
+      - ".github/workflows/clients-go.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-go-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: clients/go
+
+jobs:
+  check-and-test:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    strategy:
+      matrix:
+        # go.mod declares 1.22, the oldest release supported; stable is the newest.
+        go: ["1.22", "stable"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+      - name: Run go vet
+        run: go vet ./...
+
+      # conformance_test.go runs every case of clients/conformance.
+      - name: Run tests, including the conformance suite
+        run: go test -race ./...

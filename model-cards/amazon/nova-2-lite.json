@@ -1,0 +1,81 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "amazon/nova-2-lite",
+  "name": "Amazon Nova 2 Lite",
+  "vendor": "Amazon",
+  "matches": {
+    "bedrock": [
+      "amazon.nova-2-lite-v1:0",
+      "us.amazon.nova-2-lite-v1:0",
+      "eu.amazon.nova-2-lite-v1:0",
+      "jp.amazon.nova-2-lite-v1:0",
+      "global.amazon.nova-2-lite-v1:0"
+    ]
+  },
+  "overview": {
+    "release_date": {
+      "value": "2025-12-02",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "context_window_tokens": {
+      "value": 1000000,
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "knowledge_cutoff": {
+      "value": "Oct 2025",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "retirement": {
+      "value": "EOL no sooner than Dec 02, 2026",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "family": {
+      "value": "Amazon Nova",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "max_output_tokens": {
+      "value": 64000,
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_in": {
+      "value": [
+        "text",
+        "image",
+        "video"
+      ],
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_out": {
+      "value": [
+        "text"
+      ],
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    }
+  },
+  "evaluations": [],
+  "safety": {
+    "model_card_url": {
+      "value": "https://docs.aws.amazon.com/pdfs/ai/responsible-ai/nova-2-lite/nova-2-lite.pdf",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "AWS AI Service Card: Amazon Nova 2 Lite"
+    }
+  }
+}

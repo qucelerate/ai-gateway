@@ -1,0 +1,53 @@
+{
+  "name": "stream_error_only",
+  "description": "A stream whose only event is a terminal error, as the contract's chat-error fixture shows, ends as a stream error with no events.",
+  "operation": "chat_stream",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions/stream",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-stream-1",
+        "cache-control": "no-store"
+      },
+      "sse": "stream-error-only.sse"
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "events": [],
+    "error": {
+      "kind": "stream",
+      "code": "provider_failure",
+      "status": 502
+    }
+  }
+}

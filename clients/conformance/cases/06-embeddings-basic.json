@@ -1,0 +1,95 @@
+{
+  "name": "embeddings_basic",
+  "description": "An embeddings call returns one vector per input, in index order.",
+  "operation": "embeddings",
+  "call": {
+    "body": {
+      "model": "embedding-default",
+      "input": [
+        "first",
+        "second"
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/embeddings",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "embedding-default",
+      "input": [
+        "first",
+        "second"
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-emb-1"
+      },
+      "json": {
+        "object": "list",
+        "model": "embedding-default",
+        "data": [
+          {
+            "object": "embedding",
+            "index": 0,
+            "embedding": [
+              0.25,
+              -0.5
+            ]
+          },
+          {
+            "object": "embedding",
+            "index": 1,
+            "embedding": [
+              1.0,
+              0.0
+            ]
+          }
+        ],
+        "usage": {
+          "input_tokens": 4,
+          "output_tokens": null,
+          "cached_input_tokens": null,
+          "reasoning_tokens": null,
+          "other_tokens": null,
+          "quality": "exact",
+          "completeness": "complete"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "result": {
+      "request_id": "req-emb-1",
+      "model": "embedding-default",
+      "data": [
+        {
+          "index": 0,
+          "embedding": [
+            0.25,
+            -0.5
+          ]
+        },
+        {
+          "index": 1,
+          "embedding": [
+            1.0,
+            0.0
+          ]
+        }
+      ],
+      "usage": {
+        "input_tokens": 4
+      }
+    }
+  }
+}

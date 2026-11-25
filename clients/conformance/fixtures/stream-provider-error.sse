@@ -1,0 +1,9 @@
+event: response.started
+data: {"model":"chat-default"}
+
+event: choice.delta
+data: {"choice_index":0,"content_delta":"partial","refusal_delta":null,"annotations":[]}
+
+event: error
+data: {"code":"provider_failure","status":502}
+

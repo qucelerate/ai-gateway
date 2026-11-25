@@ -1,0 +1,123 @@
+{
+  "name": "chat_explicit_headers",
+  "description": "A caller's Idempotency-Key and X-Request-Id are sent as given, and every request field reaches the wire.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Be brief."
+        },
+        {
+          "role": "developer",
+          "content": "Answer in English."
+        },
+        {
+          "role": "user",
+          "content": "Say hello."
+        },
+        {
+          "role": "assistant",
+          "content": "Hello."
+        },
+        {
+          "role": "user",
+          "content": "Again."
+        }
+      ],
+      "temperature": 0.2,
+      "max_tokens": 64
+    },
+    "idempotency_key": "caller-key-0001",
+    "request_id": "caller-request-0001"
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key",
+      "idempotency-key": "caller-key-0001",
+      "x-request-id": "caller-request-0001"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Be brief."
+        },
+        {
+          "role": "developer",
+          "content": "Answer in English."
+        },
+        {
+          "role": "user",
+          "content": "Say hello."
+        },
+        {
+          "role": "assistant",
+          "content": "Hello."
+        },
+        {
+          "role": "user",
+          "content": "Again."
+        }
+      ],
+      "temperature": 0.2,
+      "max_tokens": 64
+    }
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "caller-request-0001"
+      },
+      "json": {
+        "id": "chatcmpl-2",
+        "model": "chat-default",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Hello again.",
+              "name": null,
+              "tool_call_id": null
+            },
+            "finish_reason": "stop",
+            "tool_calls": [],
+            "refusal": null,
+            "safety": [],
+            "annotations": []
+          }
+        ],
+        "usage": {
+          "input_tokens": 9,
+          "output_tokens": 2,
+          "cached_input_tokens": 0,
+          "reasoning_tokens": 0,
+          "other_tokens": null,
+          "quality": "exact",
+          "completeness": "complete"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "result": {
+      "request_id": "caller-request-0001",
+      "choices": [
+        {
+          "message": {
+            "content": "Hello again."
+          }
+        }
+      ]
+    }
+  }
+}

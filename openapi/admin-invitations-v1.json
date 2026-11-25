@@ -1,0 +1,590 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin invitations API",
+    "version": "1.0.0",
+    "description": "Invitations admit whoever signs in with the link to the organization in a given role, so nobody has to know a person's sign-in identity in advance. The link is a single-use URL to `/api/admin/v1/invitations/accept?token=\u2026`; the person must sign in with the gateway's configured identity provider (`OIDC_ISSUER`), or the organization's own while it is enabled, before the invitation expires. Where local accounts are on, the link opens the admin UI's invitation page instead, which also offers accepting with an email address and a password (see `admin-local-accounts-v1.json`); `&method=sso` goes straight to the provider. Without an OIDC issuer, invitations name the local accounts' issuer (`urn:gateway:local`). The gateway sends no email: whoever creates an invitation sends the link to the person themselves. Only a SHA-256 digest of the token is stored; the link is returned once, in the response that created it, and is never logged, audited or kept for a replay. Accepting raises the person's membership to the invited role, never lowering anything they already hold. Authenticated with a session cookie or an agent token (`Authorization: Bearer gwa_\u2026`), which acts only in its agent's organization.\n\nPermissions are organization-wide only: `invitation_read` (owner, admin, auditor) and `invitation_write` (owner, admin). A caller may only invite in a role at or below their own: an admin cannot invite an owner (`escalation_denied`). Operators can still create invitations on the server with `gateway invitation create`, which is how an organization gets its first owner."
+  },
+  "security": [
+    {
+      "session": []
+    },
+    {
+      "agentToken": []
+    }
+  ],
+  "paths": {
+    "/api/admin/v1/organizations/{org}/invitations": {
+      "get": {
+        "operationId": "listInvitations",
+        "summary": "Invitations",
+        "description": "Permission `invitation_read` (owner, admin, auditor; org-wide only). Not audited. The organization's invitations, newest first, including those made with the CLI. Neither the token nor its digest is ever returned. `grantable_roles` lists the roles the caller may invite in: empty without `invitation_write`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "description": "Opaque signed token from `next_page_token`; bound to the actor, organization, and ordering.",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of invitations.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createInvitation",
+        "summary": "Invite someone",
+        "description": "Permission `invitation_write` (owner, admin; org-wide only). Audited as `invitation.created`. Creates a pending invitation and returns it with its `link`, in this response only; an idempotent replay returns the invitation with `link: null`, `replay: true`, and `error: \"secret_unavailable_on_replay\"`. The role must be at or below the caller's own. The invitation is valid for `valid_hours` (1 to 720, 72 when left out). `If-Match` is not used.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created; `link` is the invitation link, shown only here.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationLinkResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay; the link is not returned again.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationLinkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "description": "`forbidden`: the actor lacks `invitation_write`; or `escalation_denied`: the role is above the actor's own.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "description": "`invalid_invitation`: an unknown role, or `valid_hours` outside 1 to 720; also `request_body_invalid` for unknown fields.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`invitations_unavailable`: `GATEWAY_ORIGIN` or `OIDC_ISSUER` is not set on this gateway, so no link can be made; also `service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/invitations/{invitation_id}/revoke": {
+      "post": {
+        "operationId": "revokeInvitation",
+        "summary": "Revoke an invitation",
+        "description": "Permission `invitation_write` (owner, admin; org-wide only). Audited as `invitation.revoked`. Revokes a pending invitation: its link stops working at once. An invitation that is no longer pending (accepted, revoked or expired) is `invitation_not_pending`. `If-Match` is not used. An idempotent replay returns the recorded invitation.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "required": true,
+            "description": "Invitation id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The revoked invitation.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "`not_found`: the invitation does not exist in the organization.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`invitation_not_pending`: already accepted, revoked or expired; also `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_\u2026",
+        "description": "An agent token (`Authorization: Bearer gwa_\u2026`), for automation: it acts as its agent, only in the agent's organization, with the agent's role. Created with `POST /api/admin/v1/organizations/{org}/agents/{agent_id}/tokens` or, on the server, `gateway agent create`."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid page token (`invalid_page_token`, `invalid_page_token_signature`, `page_token_scope_mismatch`, `page_token_query_mismatch`, `page_token_too_large`, `pagination_limit_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "`authentication_required`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "`forbidden`: the actor lacks the required permission for the organization.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "`service_unavailable` or `authentication_unavailable`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "WriteBadRequest": {
+        "description": "`idempotency_key_required`, `idempotency_key_invalid`, or a malformed JSON body (`request_body_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "`request_body_invalid`: the body is not `application/json`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "Role": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "admin",
+          "member",
+          "auditor",
+          "read-only"
+        ],
+        "description": "The organization role the invited person gets. Owners and admins get the matching administrative role; auditors read; members and read-only members get no administrative role."
+      },
+      "InvitationInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "valid_hours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720,
+            "default": 72,
+            "description": "How long the link works, in hours."
+          }
+        }
+      },
+      "Invitation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "role",
+          "status",
+          "created_at",
+          "expires_at",
+          "created_by",
+          "accepted_at",
+          "accepted_by",
+          "revoked_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "revoked",
+              "expired"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The user who created it; null when the operator did, with the CLI."
+          },
+          "accepted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "accepted_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The user who accepted it."
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "InvitationLinkResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "invitation",
+          "link",
+          "replay",
+          "error"
+        ],
+        "properties": {
+          "invitation": {
+            "$ref": "#/components/schemas/Invitation"
+          },
+          "link": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "description": "The invitation link, `{GATEWAY_ORIGIN}/api/admin/v1/invitations/accept?token=\u2026`. Returned once; send it to the person yourself."
+          },
+          "replay": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "secret_unavailable_on_replay",
+              null
+            ]
+          }
+        }
+      },
+      "InvitationPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "next_page_token",
+          "grantable_roles"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invitation"
+            }
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grantable_roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "description": "Roles the caller may invite in, most access first; empty without `invitation_write`."
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "name": "stream_ends_without_terminal",
+  "description": "A stream that closes before a terminal event is a protocol error, never a success; streams are not resumable.",
+  "operation": "chat_stream",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions/stream",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-stream-1",
+        "cache-control": "no-store"
+      },
+      "sse": "stream-truncated.sse"
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "events": [
+      {
+        "event": "response.started",
+        "data": {}
+      },
+      {
+        "event": "choice.delta",
+        "data": {
+          "content_delta": "cut"
+        }
+      }
+    ],
+    "error": {
+      "kind": "protocol"
+    }
+  }
+}

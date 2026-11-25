@@ -1,0 +1,17 @@
+: a comment line, which clients ignore
+
+event: response.started
+data: {"model":"chat-default","added_in_1_1":true}
+
+event: future.event
+data: {"anything":1}
+
+event: choice.delta
+data: {"choice_index":0,"content_delta":"Hi","refusal_delta":null,"annotations":[],"logprob":-0.1}
+
+event: choice.finished
+data: {"choice_index":0,"finish_reason":"some_future_reason"}
+
+event: response.completed
+data: {"model":"chat-default","usage":null,"extra":{}}
+

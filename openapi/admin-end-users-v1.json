@@ -1,0 +1,2030 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin end-user budgets API",
+    "version": "1.0.0",
+    "description": "Budgets per end user of an app (D-028): an app's backend names its user on each inference request (`Gateway-End-User`, or the body's `user`), and the app's service account limits each user by their plan (an allowance per month, week, day or number of days, and optional per-user request and token rate limits) and then prepaid credits, spent soonest-expiring first, reserved with every other budget. These endpoints set the service account's end-user settings and plans, assign users to plans, and grant and reverse credits. Money is in money units, 10⁻⁶ of the currency's smallest unit. Authenticated with a session cookie or an agent token (`Authorization: Bearer gwa_…`), which acts only in its agent's organization: an app's backend uses an agent whose role has `end_user_write` (owner, admin or operator) to assign plans and grant credits without being able to change budgets. Every response is `Cache-Control: no-store`; problems are `application/problem+json`."
+  },
+  "security": [
+    {
+      "session": []
+    },
+    {
+      "agentToken": []
+    }
+  ],
+  "paths": {
+    "/api/admin/v1/organizations/{org}/service-accounts/{service_account_id}/end-user-settings": {
+      "get": {
+        "operationId": "getEndUserSettings",
+        "summary": "Read the service account's end-user settings",
+        "description": "Permission `budget_read`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The settings.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndUserSettings"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: the service account does not exist, or has no end-user settings.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putEndUserSettings",
+        "summary": "Turn on, or change, budgets per end user",
+        "description": "Permission `budget_write` (owner, admin). Audited as `end_user_setting.set`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the resource's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndUserSettingsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "`not_found`: the service account (or plan, user or grant) does not exist in the organization.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "Changed, or an idempotent replay.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndUserSettings"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndUserSettings"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict` (stale `If-Match`), `idempotency_conflict`, or `idempotency_in_progress`, or `currency_locked`: a plan or grant exists in the current currency.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_end_user_settings` (unknown default plan, bad currency) or `request_body_unprocessable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/service-accounts/{service_account_id}/end-user-plans": {
+      "get": {
+        "operationId": "listEndUserPlans",
+        "summary": "List plans",
+        "description": "Permission `budget_read`. Removed plans are not listed. Each plan carries its totals: `users`, the end users it is in force for, and `spent_minor`, what their requests settled in the plan's current period were charged.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every plan, by name.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/service-accounts/{service_account_id}/end-user-plans/{plan}": {
+      "put": {
+        "operationId": "putEndUserPlan",
+        "summary": "Create or change a plan",
+        "description": "Permission `budget_write`. Audited as `end_user_plan.set`. Needs end-user settings first. Replaces the whole plan: a field left out takes its default (`monthly`, no rate limits). A changed allowance or limit applies from the next request and keeps the period's spend; a changed period starts the new period's allowance afresh.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "plan",
+            "in": "path",
+            "required": true,
+            "description": "Plan name.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the resource's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "`not_found`: the service account (or plan, user or grant) does not exist in the organization.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "Changed, or an idempotent replay.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict` (stale `If-Match`), `idempotency_conflict`, or `idempotency_in_progress`, or `end_user_settings_missing`: set the service account's end-user settings first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_end_user_plan` or `request_body_unprocessable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteEndUserPlan",
+        "summary": "Remove a plan",
+        "description": "Permission `budget_write`. Audited as `end_user_plan.deleted`. The plan is hidden, never dropped.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "plan",
+            "in": "path",
+            "required": true,
+            "description": "Plan name.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the resource's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "`not_found`: the service account (or plan, user or grant) does not exist in the organization.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "204": {
+            "description": "Removed.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict` (stale `If-Match`), `idempotency_conflict`, or `idempotency_in_progress`, or `plan_in_use`: it is the default plan or a user is on it.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/service-accounts/{service_account_id}/end-users": {
+      "get": {
+        "operationId": "listEndUsers",
+        "summary": "List end users",
+        "description": "Permission `budget_read`. By first seen, newest first.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "description": "`next_page_token` of the previous page; signed and bound to the caller and query.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of users.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndUserPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "description": "`not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/service-accounts/{service_account_id}/end-users/{end_user}": {
+      "get": {
+        "operationId": "getEndUser",
+        "summary": "Read an end user's plan, allowance and credit balance",
+        "description": "Permission `budget_read`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "end_user",
+            "in": "path",
+            "required": true,
+            "description": "The app's ID for its user, percent-encoded: 1–256 bytes of UTF-8, no control characters, no leading or trailing whitespace.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 768
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The user, this period.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndUser"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: never seen.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putEndUser",
+        "summary": "Assign an end user's plan",
+        "description": "Permission `end_user_write` (owner, admin, operator). Audited as `end_user.set`. Creates the user if never seen. Applies from the next request; this period's spend is kept.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "end_user",
+            "in": "path",
+            "required": true,
+            "description": "The app's ID for its user, percent-encoded: 1–256 bytes of UTF-8, no control characters, no leading or trailing whitespace.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 768
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the resource's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndUserInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "`not_found`: the service account (or plan, user or grant) does not exist in the organization.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "Changed, or an idempotent replay.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndUser"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndUser"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict` (stale `If-Match`), `idempotency_conflict`, or `idempotency_in_progress`, or `end_user_settings_missing`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`unknown_end_user_plan`, `end_user_invalid` or `request_body_unprocessable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/service-accounts/{service_account_id}/end-users/{end_user}/credit-grants": {
+      "get": {
+        "operationId": "listCreditGrants",
+        "summary": "List an end user's credit grants",
+        "description": "Permission `budget_read`. Oldest first.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "end_user",
+            "in": "path",
+            "required": true,
+            "description": "The app's ID for its user, percent-encoded: 1–256 bytes of UTF-8, no control characters, no leading or trailing whitespace.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 768
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every grant.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditGrantList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "grantCredits",
+        "summary": "Grant prepaid credits",
+        "description": "Permission `end_user_write`. Audited as `end_user_credit_grant.created`. Creates the user if never seen. `reference` is unique per service account: the same reference with the same user, amount and expiry returns the existing grant (200); with anything else, 409 `credit_reference_conflict`. No `If-Match`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "end_user",
+            "in": "path",
+            "required": true,
+            "description": "The app's ID for its user, percent-encoded: 1–256 bytes of UTF-8, no control characters, no leading or trailing whitespace.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 768
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Optional; when absent it is derived from the body's `reference` (and, for a reversal, the grant). The reference itself is what makes the write idempotent, whichever key or token sends it.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditGrantInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "`not_found`: the service account (or plan, user or grant) does not exist in the organization.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "The existing grant with this reference.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditGrant"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Granted.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditGrant"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`credit_reference_conflict`, `end_user_settings_missing`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_credit_grant` (amount, expiry in the past) or `request_body_unprocessable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/service-accounts/{service_account_id}/end-users/{end_user}/credit-grants/{grant_id}/reversals": {
+      "post": {
+        "operationId": "reverseCredits",
+        "summary": "Take back unspent credit (a refund or chargeback)",
+        "description": "Permission `end_user_write`. Audited as `end_user_credit_grant.reversed`. Takes up to what is unspent and unreserved of the grant, never more; `reversed_minor` says how much. `reference` is unique per grant, with the same rules as grants (409 `reversal_reference_conflict`). No `If-Match`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "The app's service account, in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "end_user",
+            "in": "path",
+            "required": true,
+            "description": "The app's ID for its user, percent-encoded: 1–256 bytes of UTF-8, no control characters, no leading or trailing whitespace.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 768
+            }
+          },
+          {
+            "name": "grant_id",
+            "in": "path",
+            "required": true,
+            "description": "Credit grant id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Optional; when absent it is derived from the body's `reference` (and, for a reversal, the grant). The reference itself is what makes the write idempotent, whichever key or token sends it.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditReversalInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "`not_found`: the service account (or plan, user or grant) does not exist in the organization.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "The existing reversal with this reference.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditReversal"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Reversed.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditReversal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`reversal_reference_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_credit_reversal` or `request_body_unprocessable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_…",
+        "description": "An agent token (`Authorization: Bearer gwa_…`), for automation: it acts as its agent, only in the agent's organization, with the agent's role. Created with `POST /api/admin/v1/organizations/{org}/agents/{agent_id}/tokens` or, on the server, `gateway agent create`."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid query (`invalid_query`) or page token (`invalid_page_token`, `invalid_page_token_signature`, `page_token_scope_mismatch`, `page_token_query_mismatch`, `page_token_too_large`, `pagination_limit_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "`authentication_required`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "`forbidden`: the actor lacks the required permission for the organization.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "`service_unavailable` or `authentication_unavailable`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "PreconditionRequired": {
+        "description": "`if_match_required`: the `If-Match` header is missing.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "WriteBadRequest": {
+        "description": "`idempotency_key_required`, `idempotency_key_invalid`, `if_match_invalid`, or a malformed JSON body (`request_body_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "EndUserSettingsInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "currency"
+        ],
+        "properties": {
+          "requirement": {
+            "type": "string",
+            "enum": [
+              "optional",
+              "required"
+            ],
+            "default": "optional",
+            "description": "`required` refuses inference requests that name no end user (400 `end_user_required`)."
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "Every plan, allowance and credit of this service account's users. Fixed once a plan or a grant exists."
+          },
+          "default_plan": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+            "description": "The plan of a user the app never assigned one; `null` refuses such users (403 `end_user_not_registered`). Must name an existing plan."
+          }
+        }
+      },
+      "EndUserSettings": {
+        "type": "object",
+        "required": [
+          "service_account_id",
+          "requirement",
+          "currency",
+          "default_plan",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "service_account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement": {
+            "type": "string",
+            "enum": [
+              "optional",
+              "required"
+            ]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "default_plan": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Resource version; the `ETag` is `\"v{version}\"`."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PlanInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "allowance_minor"
+        ],
+        "properties": {
+          "allowance_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "What each user on the plan may spend per period, in money units; 0 for a credits-only plan."
+          },
+          "period": {
+            "type": "string",
+            "enum": [
+              "monthly",
+              "weekly",
+              "daily",
+              "days"
+            ],
+            "default": "monthly",
+            "description": "How the allowance repeats: the UTC calendar month, the ISO week from Monday 00:00 UTC, the UTC day, or `period_days` days (windows counted from Monday 1970-01-05 00:00 UTC, shared by every user of the plan)."
+          },
+          "period_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 366,
+            "description": "With `period: days` only (and then required): the days in each period."
+          },
+          "requests_per_minute": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 1000000,
+            "description": "Requests each user may make in a sliding 60 seconds; a batch is one. Absent or null: no limit. Over it: 429 `rate_limit_exceeded` with `end_user`, `limit` and `Retry-After`."
+          },
+          "tokens_per_minute": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 1000000000,
+            "description": "Tokens each user's requests may hold or use in a sliding 60 seconds: a request in flight counts its input bound, output cap and reasoning allowance, a finished one the tokens its usage reported. A request's output cap is lowered to what fits; one whose input does not fit is refused with 429 `rate_limit_exceeded`. A batch is refused while the minute's tokens are used up; its lines are not counted. Absent or null: no limit."
+          },
+          "max_concurrent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 1000000,
+            "description": "Requests each user may have in flight at once (batches not counted). Absent or null: no limit. Over it: 429 `concurrency_limit_exceeded` with `end_user`, `limit` and `Retry-After: 1`."
+          }
+        }
+      },
+      "Plan": {
+        "type": "object",
+        "required": [
+          "name",
+          "allowance_minor",
+          "period",
+          "period_days",
+          "requests_per_minute",
+          "tokens_per_minute",
+          "max_concurrent",
+          "currency",
+          "users",
+          "spent_minor",
+          "period_start",
+          "period_end",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "allowance_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Per period, in money units: 10⁻⁶ of the currency's smallest unit ($1.00 is `100000000`)."
+          },
+          "period": {
+            "type": "string",
+            "enum": [
+              "monthly",
+              "weekly",
+              "daily",
+              "days"
+            ]
+          },
+          "period_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 366,
+            "description": "The days in each period with `period: days`; null otherwise."
+          },
+          "requests_per_minute": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "Per user; null for no limit."
+          },
+          "tokens_per_minute": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "Per user; null for no limit."
+          },
+          "max_concurrent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "Per user; null for no limit."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "users": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The end users the plan is in force for: assigned to it, or unassigned while it is the default plan."
+          },
+          "spent_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "What those users' requests settled in `period_start`..`period_end` were charged (allowance and credits alike, in `currency`), whichever plan they were on when they made them."
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The plan's current period, `[period_start, period_end)`."
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Resource version; the `ETag` is `\"v{version}\"`."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PlanList": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Plan"
+            }
+          }
+        }
+      },
+      "EndUserInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "plan"
+        ],
+        "properties": {
+          "plan": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The user's plan; `null` puts them on the default plan."
+          }
+        }
+      },
+      "EndUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "plan",
+          "effective_plan",
+          "currency",
+          "period_start",
+          "period_end",
+          "allowance_minor",
+          "allowance_spent_minor",
+          "allowance_reserved_minor",
+          "allowance_remaining_minor",
+          "credit_balance_minor",
+          "spent_minor",
+          "spent_currency",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The app's ID, as sent."
+          },
+          "plan": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The plan assigned; `null` for the default."
+          },
+          "effective_plan": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The plan in force; `null` when the user is unassigned and there is no default, so requests are refused."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null` when the service account has no end-user settings (users are recorded, not limited)."
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "This period of the plan in force (the UTC calendar month without one), `[period_start, period_end)`."
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "allowance_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "This period's allowance under the plan in force."
+          },
+          "allowance_spent_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Charged to this period's allowance by settled requests. Can exceed the allowance after usage past a reservation."
+          },
+          "allowance_reserved_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Held for this period's allowance by requests in flight."
+          },
+          "allowance_remaining_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Allowance less spent and reserved; never negative."
+          },
+          "credit_balance_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Unspent, unreserved credit of grants that have not expired."
+          },
+          "spent_minor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0,
+            "description": "What the user's requests settled this period (`period_start`..`period_end`) were charged, from allowance or credits, in `spent_currency`; a request awaiting reconciliation counts once it is settled. Null when, without end-user settings, they used several currencies."
+          },
+          "spent_currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The app's end-user currency; without end-user settings, the one currency the user's requests used this period (null before any)."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Resource version; the `ETag` is `\"v{version}\"`. 0 for a user only requests have seen (no admin write yet); `If-Match: \"v0\"` or `*` updates them."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EndUserPage": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EndUser"
+            }
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CreditGrantInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reference",
+          "amount_minor"
+        ],
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "The app's purchase or order ID; unique per service account."
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Money units: 10⁻⁶ of the currency's smallest unit ($1.00 is `100000000`)."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When unspent credit lapses; `null` never. Must be in the future."
+          }
+        }
+      },
+      "CreditGrant": {
+        "type": "object",
+        "required": [
+          "id",
+          "end_user",
+          "reference",
+          "amount_minor",
+          "currency",
+          "reversed_minor",
+          "spent_minor",
+          "reserved_minor",
+          "remaining_minor",
+          "expires_at",
+          "expired",
+          "granted_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "end_user": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Money units: 10⁻⁶ of the currency's smallest unit ($1.00 is `100000000`)."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "reversed_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Money units: 10⁻⁶ of the currency's smallest unit ($1.00 is `100000000`)."
+          },
+          "spent_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Money units: 10⁻⁶ of the currency's smallest unit ($1.00 is `100000000`)."
+          },
+          "reserved_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Money units: 10⁻⁶ of the currency's smallest unit ($1.00 is `100000000`)."
+          },
+          "remaining_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Amount less reversed, spent and reserved; 0 once expired."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expired": {
+            "type": "boolean"
+          },
+          "granted_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CreditGrantList": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreditGrant"
+            }
+          }
+        }
+      },
+      "CreditReversalInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reference",
+          "amount_minor",
+          "reason"
+        ],
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "The app's refund or chargeback ID; unique per grant."
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "What to take back; at most what is unspent and unreserved is taken."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      },
+      "CreditReversal": {
+        "type": "object",
+        "required": [
+          "id",
+          "grant_id",
+          "reference",
+          "requested_minor",
+          "reversed_minor",
+          "reason",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "grant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "requested_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Money units: 10⁻⁶ of the currency's smallest unit ($1.00 is `100000000`)."
+          },
+          "reversed_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "What was taken: never more than was unspent and unreserved."
+          },
+          "reason": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

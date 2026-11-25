@@ -1,0 +1,221 @@
+# The gateway: one image run as the `api` and `worker` profiles, a migration
+# Job before each install and upgrade, and the admin UI on the same origin
+# as the API (its cookie sessions and CSRF checks require it). See README.md
+# and https://gateway.qucelerate.com/operations/.
+
+# The public images, published by each release (release-images workflow),
+# signed with cosign (keyless) and carrying an SBOM and provenance. An empty
+# tag means the chart's appVersion: the release this chart came with.
+image:
+  repository: ghcr.io/qucelerate/ai-gateway
+  tag: ""
+  pullPolicy: IfNotPresent
+
+adminImage:
+  repository: ghcr.io/qucelerate/ai-gateway-admin
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# The images are public. Set this only to pull from a private mirror, e.g.
+#   imagePullSecrets: [{name: my-registry}]
+imagePullSecrets: []
+
+# Replaces the chart's name (ai-gateway) as every resource's name prefix.
+nameOverride: ""
+
+# The browser-visible host of the admin UI and API (served as
+# https://<host>). Required: the chart refuses to render without it.
+host: ""
+
+# Created by you in the release namespace before installing, never
+# committed, with the keys README.md lists (DATABASE_URL, API_KEY_PEPPER,
+# GATEWAY_CREDENTIAL_ENCRYPTION_KEY and, with OIDC, its secrets).
+existingSecret: ai-gateway-secrets
+
+# The gateway's own cloud identities, which it uses to reach tenants'
+# clouds (an AWS role it assumes, an Entra directory it signs in to, a
+# Google service account it impersonates). Per cloud, either:
+#   - static: credentials in `cloudIdentity.existingSecret` (AWS:
+#     BEDROCK_AWS_ACCESS_KEY_ID/BEDROCK_AWS_SECRET_ACCESS_KEY; Azure:
+#     AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET), or
+#   - federated: the pod's service-account token, exchanged at the cloud;
+#     the cluster's token issuer must be public and trusted there.
+# The API and worker use them; the migration Job does not.
+cloudIdentity:
+  # Created by you, like existingSecret; "" for none.
+  existingSecret: ""
+  serviceAccount:
+    create: true
+    # "" for the chart's name (ai-gateway).
+    name: ""
+  aws:
+    # federated: the role the gateway assumes with its token.
+    roleArn: ""
+  azure:
+    # federated: the gateway's multi-tenant app and its home directory.
+    tenantId: ""
+    clientId: ""
+  google:
+    # federated: the workload identity provider's resource name
+    # (//iam.googleapis.com/projects/<number>/locations/global/
+    # workloadIdentityPools/<pool>/providers/<provider>) and the service
+    # account the gateway acts as.
+    workloadIdentityProvider: ""
+    serviceAccount: ""
+
+# The region every instance reports (GATEWAY_REGION, shown on Organization
+# -> Routing); "" reports none.
+region: ""
+
+# IPv4 and IPv6. The gateway and admin UI containers listen on `[::]`, which
+# also accepts IPv4 (an image on a node without IPv6 falls back to
+# `0.0.0.0`). Set listenAddress to "0.0.0.0" to listen on IPv4 only.
+# ipFamilyPolicy and ipFamilies are set on every Service when given:
+# PreferDualStack on a dual-stack cluster gives each Service an address of
+# both families; unset, a Service takes the cluster's default (single-stack
+# on a single-stack cluster).
+network:
+  listenAddress: "[::]"
+  ipFamilyPolicy: ""
+  ipFamilies: []
+
+# Non-secret settings, as the gateway reads them from the environment.
+env:
+  RUST_LOG: info
+  OIDC_ENABLED: "false"
+
+api:
+  replicas: 1
+  # Streams are drained on SIGTERM; give them time to finish.
+  terminationGracePeriodSeconds: 60
+  resources:
+    requests: {cpu: 100m, memory: 64Mi}
+    limits: {cpu: "1", memory: 256Mi}
+
+worker:
+  replicas: 1
+  terminationGracePeriodSeconds: 30
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+# The API, worker, admin UI, migration Job and their Ingress. Turn off to
+# install only a data plane, in another region's cluster, against a primary
+# that a control plane elsewhere migrates.
+controlPlane:
+  enabled: true
+
+# An isolated data plane (GATEWAY_PROFILE=data-plane): inference only,
+# routing from configuration versions, reserving and settling in the
+# central primary. Off by default.
+dataPlane:
+  enabled: false
+  # Created by you, never committed; see README.md. Holds DATABASE_URL as
+  # the gateway_data_plane role, API_KEY_PEPPER and the credential key (or
+  # KMS settings) of the control plane.
+  existingSecret: ai-gateway-data-plane-secrets
+  # Reported as GATEWAY_REGION; defaults to `region`.
+  region: ""
+  # Its own inference origin, served by an Ingress like the main one; ""
+  # for none (in-cluster clients use the Service).
+  host: ""
+  tlsSecretName: ai-gateway-data-plane-tls
+  replicas: 2
+  terminationGracePeriodSeconds: 60
+  resources:
+    requests: {cpu: 100m, memory: 64Mi}
+    limits: {cpu: "1", memory: 256Mi}
+
+# Prometheus metrics (GATEWAY_METRICS_ADDR) from every API, worker and data
+# plane pod, on a port of its own. The listener has no authentication, so no
+# Service or Ingress exposes it: a scraper reaches the pods directly. Labels
+# carry no tenant data. Off by default.
+metrics:
+  enabled: false
+  port: 9464
+  # prometheus.io/scrape, /port and /path pod annotations, for a Prometheus
+  # that discovers pods by annotation.
+  podAnnotations: true
+  # A PodMonitor, for the Prometheus Operator (its CRDs must be installed).
+  podMonitor:
+    enabled: false
+    interval: 30s
+    # Extra labels, such as the one a Prometheus selects monitors by.
+    labels: {}
+
+# HTTP/3 (QUIC) for clients. ingress-nginx serves HTTP/1.1 and HTTP/2 only,
+# so this runs the gateway's own QUIC listener (GATEWAY_HTTP3_ADDR) in the
+# API pods, and in the data plane pods when the data plane has a host,
+# presenting that host's ingress TLS secret, and publishes it with a Service
+# on UDP `port` (a LoadBalancer by default). Clients and the firewall in
+# front must reach that address on UDP. Needs a gateway image with the QUIC
+# listener (D-027). Off by default.
+#
+# The ingress keeps speaking HTTP/1.1 to the gateway: nginx proxies to
+# upstreams over HTTP/1.x only (HTTP/2 upstream is gRPC-only), so h2c to
+# the plain listener is not used here.
+http3:
+  enabled: false
+  containerPort: 8443
+  # The UDP port clients reach.
+  port: 443
+  service:
+    type: LoadBalancer
+    # Local keeps the client's address and a QUIC connection's packets on
+    # one node; Cluster for a load balancer without per-node health checks.
+    externalTrafficPolicy: Local
+    # Your load balancer's annotations (one that pins its address, say).
+    annotations: {}
+  # The Alt-Svc the API's responses carry. Browsers apply it to the whole
+  # origin, and the main host also serves the admin UI, which the QUIC
+  # listener does not, so it stays `off` there: clients that try HTTP/3 by
+  # themselves (curl --http3, HTTPS DNS records with alpn=h3) use it. The
+  # data plane's own host advertises h3=":<port>" itself.
+  altSvc: "off"
+
+admin:
+  replicas: 1
+  resources:
+    requests: {cpu: 10m, memory: 16Mi}
+    limits: {cpu: 100m, memory: 64Mi}
+
+migrate:
+  resources:
+    requests: {cpu: 50m, memory: 32Mi}
+    limits: {cpu: 500m, memory: 128Mi}
+
+ingress:
+  enabled: true
+  className: nginx
+  # The certificate for `host`: a TLS Secret you create, or one cert-manager
+  # keeps (add its annotation, e.g. cert-manager.io/cluster-issuer: <issuer>).
+  tlsSecretName: ai-gateway-tls
+  # ingress-nginx annotations; adjust them for another ingress controller.
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Catalog manifests are up to 1 MiB.
+    nginx.ingress.kubernetes.io/proxy-body-size: 2m
+    # Streamed completions and exports: unbuffered, long-lived.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "900"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "900"
+
+# The documentation site (apps/docs), a static nginx image, on a host of
+# its own. Off by default.
+docs:
+  enabled: false
+  host: ""
+  tlsSecretName: ai-gateway-docs-tls
+  image:
+    repository: ghcr.io/qucelerate/ai-gateway-docs
+    # "" for the chart's appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests: {cpu: 10m, memory: 16Mi}
+    limits: {cpu: 100m, memory: 64Mi}
+  ingress:
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"

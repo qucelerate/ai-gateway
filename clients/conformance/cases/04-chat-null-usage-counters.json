@@ -1,0 +1,88 @@
+{
+  "name": "chat_null_usage_counters",
+  "description": "Usage counters may be null and quality may be estimated or unknown; a client keeps null distinct from zero.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-chat-4"
+      },
+      "json": {
+        "id": "chatcmpl-4",
+        "model": "chat-default",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Hi.",
+              "name": null,
+              "tool_call_id": null
+            },
+            "finish_reason": null,
+            "tool_calls": [],
+            "refusal": null,
+            "safety": [],
+            "annotations": []
+          }
+        ],
+        "usage": {
+          "input_tokens": null,
+          "output_tokens": 3,
+          "cached_input_tokens": null,
+          "reasoning_tokens": null,
+          "other_tokens": null,
+          "quality": "estimated",
+          "completeness": "partial"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "result": {
+      "choices": [
+        {
+          "finish_reason": null
+        }
+      ],
+      "usage": {
+        "input_tokens": null,
+        "output_tokens": 3,
+        "reasoning_tokens": null,
+        "quality": "estimated",
+        "completeness": "partial"
+      }
+    }
+  }
+}

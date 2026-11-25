@@ -1,0 +1,9 @@
+# The gateway versions every client is tested against
+# (.github/workflows/clients-compatibility.yml): GHCR image tags of
+# ghcr.io/qucelerate/gateway and gateway-admin in the private repository,
+# ghcr.io/qucelerate/ai-gateway and ai-gateway-admin in the public one.
+# `dev` is main (in the public repository, which publishes no `dev`
+# image, the newest release: `latest`). A gateway release adds its version
+# (a v1.2.3 tag publishes images tagged 1.2.3); drop a version when it is
+# no longer supported.
+dev

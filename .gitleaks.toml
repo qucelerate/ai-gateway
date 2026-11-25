@@ -1,0 +1,50 @@
+# Repository-wide secret scan (gitleaks v8.24.3): gitleaks' default rules,
+# less the known test values below that look like secrets but are not. The
+# release export (scripts/release-export.sh) fails on any other finding.
+#
+# Each exception extends one default rule (gitleaks merges a rule of the same
+# id into the default) and is as narrow as it can be: a path and the fake
+# value together, so a real credential beside one is still reported.
+# (gitleaks 8.24 has no top-level [[allowlists]]; rule-level ones work.)
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "private-key"
+[[rules.allowlists]]
+description = "Self-signed TLS keys made for the tests (tests/fixtures/tls/README.md)"
+paths = ['''(^|/)tests/fixtures/tls/(localhost|renewed)\.key$''']
+
+[[rules]]
+id = "aws-access-token"
+[[rules.allowlists]]
+description = "Fake AWS access key ids of the functional suite's fake AWS"
+condition = "AND"
+paths = ['''(^|/)tests/functional/''']
+regexTarget = "match"
+regexes = ['''\b(AKIA|ASIA)FUNCTIONALTEST[0-9]{2}\b''']
+
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Example Idempotency-Key headers in the docs: random UUIDs, not credentials"
+condition = "AND"
+paths = ['''(^|/)apps/docs/''']
+# The whole line must be the header alone (and its continuation), so a
+# credential sharing the line is still reported.
+regexTarget = "line"
+regexes = ['''^\s*-H "Idempotency-Key: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"( \\)?$''']
+[[rules.allowlists]]
+description = "Admin console unit tests: adapter instance keys, sample UUID, fake tokens and webhook secret"
+condition = "AND"
+paths = ['''(^|/)apps/admin/src/[^/]+\.test\.tsx?$''']
+regexTarget = "secret"
+regexes = [
+  '''^bedrock-[0-9]{4,12}(-[a-z0-9.-]+)?$''',
+  '''^123e4567-e89b-12d3-a456-426614174000$''',
+  # The alphabet, digits and "-_abcde": a token-shaped test value.
+  '''^(gwa_)?AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde$''',
+  # base64 of "secret-value-for-testing-only"
+  '''^whsec_c2VjcmV0LXZhbHVlLWZvci10ZXN0aW5nLW9ubHk=$''',
+]

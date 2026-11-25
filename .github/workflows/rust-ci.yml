@@ -1,0 +1,313 @@
+name: Rust CI
+
+on:
+  push:
+    # main and release tags: a pull request runs this for its branch, and
+    # container-images.yml publishes a v* tag only after this passes on it.
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - ".github/actions/setup-rust/**"
+      - "src/**"
+      - "clients/conformance/errors.json"
+      - "tests/**"
+      - "migrations/**"
+      - "model-cards/**"
+      - "scripts/check-model-card-dates.py"
+      - "docker/postgres/**"
+      - "build.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/**"
+      - ".github/workflows/rust-ci.yml"
+  # By hand, on main or a release tag: when GitHub loses a push's runs
+  # (an incident can leave them queued for good), run each again here.
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/actions/setup-rust/**"
+      - "src/**"
+      - "clients/conformance/errors.json"
+      - "tests/**"
+      - "migrations/**"
+      - "model-cards/**"
+      - "scripts/check-model-card-dates.py"
+      - "docker/postgres/**"
+      - "build.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/**"
+      - ".github/workflows/rust-ci.yml"
+  # New advisories appear without any change here.
+  schedule:
+    # Monday 13:17 UTC.
+    - cron: "17 13 * * 1"
+
+permissions:
+  contents: read
+
+# A newer push cancels a branch's runs, but not main's: image publishing
+# waits for main's checks, so each must finish.
+concurrency:
+  group: rust-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # Disposable CI-only credentials for the service container below.
+  POSTGRES_USER: gateway_bootstrap_admin
+  POSTGRES_PASSWORD: ci-bootstrap-password
+  POSTGRES_DB: gateway
+  GATEWAY_APP_USER: gateway_app
+  GATEWAY_APP_PASSWORD: ci-app-password
+  GATEWAY_DATA_PLANE_PASSWORD: ci-data-plane-password
+  # Not 5432: on the shared self-hosted runner the image build's Docker
+  # stack uses that, and a job interrupted before its cleanup must not
+  # block the other workflow. psql, pg_isready and the provisioning
+  # scripts read PGPORT.
+  PGPORT: "55432"
+  # ClickHouse for the analytics sink's tests, likewise off the defaults.
+  CLICKHOUSE_HTTP_PORT: "58123"
+  CLICKHOUSE_TCP_PORT: "59000"
+  CLICKHOUSE_INTERSERVER_PORT: "59009"
+
+jobs:
+  model-card-dates:
+    # A card fact read more than 180 days ago is due for a re-read (the
+    # weekly run catches facts that age without any change here). The
+    # script and the refresh rule: model-cards/README.md, "Refreshing".
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Check model card retrieval dates
+        run: python3 -I scripts/check-model-card-dates.py
+
+  advisories:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Rust toolchain
+        uses: ./.github/actions/setup-rust
+        with:
+          toolchain: "stable"
+
+      # Kept between runs on the self-hosted runner: cargo skips a version
+      # it already installed.
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
+      - name: Check that ignored advisories stay out of the build
+        # .cargo/audit.toml ignores RUSTSEC-2023-0071 (rsa) and
+        # RUSTSEC-2026-0459 (libsqlite3-sys) only because neither is compiled:
+        # each is reachable only through a sqlx driver the gateway does not
+        # enable (sqlx-mysql, sqlx-sqlite). Fail if either becomes reachable.
+        run: |
+          for crate in rsa libsqlite3-sys; do
+            if cargo tree --target all --edges normal,build --invert "$crate" 2>/dev/null | grep -q .; then
+              echo "$crate is now part of the build; revisit .cargo/audit.toml" >&2
+              exit 1
+            fi
+          done
+
+      - name: Check dependencies for security advisories
+        # Exceptions, each with its reason, are in .cargo/audit.toml.
+        run: cargo audit
+
+  check-and-test:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Start PostgreSQL 16
+        # Ubuntu's PostgreSQL 16 on the runner, not a service container: no
+        # registry pull, so neither Docker Hub's nor ECR Public's anonymous
+        # pull limits can stop CI. GitHub's image has it; the self-hosted
+        # runner installs it once. The cluster is made afresh for each run
+        # (and dropped after it), so a persistent runner never carries one
+        # run's roles or data into the next. compose.yaml keeps the pinned
+        # image for local use.
+        run: |
+          if ! dpkg -s postgresql-16 >/dev/null 2>&1; then
+            sudo apt-get -o DPkg::Lock::Timeout=300 update
+            sudo apt-get -o DPkg::Lock::Timeout=300 install --yes --no-install-recommends postgresql-16
+          fi
+          sudo pg_dropcluster --stop 16 main 2>/dev/null || true
+          sudo pg_createcluster 16 main --port "$PGPORT" --start >/dev/null
+          for attempt in $(seq 1 30); do
+            pg_isready --host localhost --port "$PGPORT" && break
+            sleep 1
+          done
+          pg_isready --host localhost --port "$PGPORT"
+          # sudo resets the environment: the port is passed, not inherited.
+          sudo -u postgres psql --port "$PGPORT" --set ON_ERROR_STOP=1 \
+            --set user="$POSTGRES_USER" --set password="$POSTGRES_PASSWORD" --set db="$POSTGRES_DB" <<'SQL'
+          SELECT format('CREATE ROLE %I LOGIN SUPERUSER PASSWORD %L', :'user', :'password') \gexec
+          SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'user') \gexec
+          SQL
+          psql "postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:$PGPORT/$POSTGRES_DB" \
+            --command "SELECT version()"
+
+      - name: Install Rust toolchain
+        uses: ./.github/actions/setup-rust
+        with:
+          toolchain: "stable"
+          components: clippy,rustfmt
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Start ClickHouse 25.8 LTS
+        # The analytics sink's tests (tests/clickhouse_analytics_integration.rs)
+        # run against a real ClickHouse. Like PostgreSQL, no registry pull:
+        # ClickHouse's own static build from its GitHub release, pinned and
+        # checked against the release's SHA-512, kept in the runner's tool
+        # cache so a persistent runner downloads it once. The cached binary
+        # is checked against its own pinned SHA-512 on every run before it
+        # is executed: the runners are persistent and also run pull
+        # requests, so the cache is not trusted. The server's data is made
+        # afresh for each run (and removed after it), with a writable access
+        # store so the tests can create a user with unsafe settings.
+        env:
+          CLICKHOUSE_VERSION: 25.8.33.6
+          # The archive's and, inside it, usr/bin/clickhouse's.
+          CLICKHOUSE_BINARY_SHA512: 8a94a62c324d1e127bc66e02ba663f2824451819b9c0f8e1e489729b7f9f84b425eee5cf89b7b4ce87c1d7c06fd172006139e49f6877782ded8c6a80e19795f8
+          CLICKHOUSE_SHA512: dcbf1046526a95f20fb5e176d03e975fe1f00ec30d803cbb61f6878a15bbda54259dc028951fd3815f81862b15e6e221c98d323591fddb9c8bca521e057db602
+        run: |
+          cache="${RUNNER_TOOL_CACHE:-$HOME/.cache}/clickhouse/$CLICKHOUSE_VERSION"
+          binary_ok() {
+            [ -x "$cache/clickhouse" ] &&
+              echo "$CLICKHOUSE_BINARY_SHA512  $cache/clickhouse" | sha512sum --check --strict --status
+          }
+          if ! binary_ok; then
+            rm -f "$cache/clickhouse"
+            download="$(mktemp -d)"
+            archive="clickhouse-common-static-$CLICKHOUSE_VERSION-amd64.tgz"
+            curl --fail --silent --show-error --location --retry 3 --output "$download/$archive" \
+              "https://github.com/ClickHouse/ClickHouse/releases/download/v$CLICKHOUSE_VERSION-lts/$archive"
+            echo "$CLICKHOUSE_SHA512  $download/$archive" | sha512sum --check --strict
+            tar --extract --gzip --file "$download/$archive" --directory "$download" \
+              "clickhouse-common-static-$CLICKHOUSE_VERSION/usr/bin/clickhouse"
+            mkdir -p "$cache"
+            mv "$download/clickhouse-common-static-$CLICKHOUSE_VERSION/usr/bin/clickhouse" "$cache/clickhouse"
+            rm -rf "$download"
+          fi
+          # Checked again, whichever way it came, right before it runs.
+          echo "$CLICKHOUSE_BINARY_SHA512  $cache/clickhouse" | sha512sum --check --strict
+          home="$RUNNER_TEMP/clickhouse"
+          rm -rf "$home"
+          mkdir -p "$home/access"
+          cat > "$home/config.xml" <<EOF
+          <clickhouse>
+            <user_directories>
+              <users_xml><path>$home/users.xml</path></users_xml>
+              <local_directory><path>$home/access/</path></local_directory>
+            </user_directories>
+          </clickhouse>
+          EOF
+          cat > "$home/users.xml" <<'EOF'
+          <clickhouse>
+            <profiles><default/></profiles>
+            <quotas><default/></quotas>
+            <users>
+              <default>
+                <no_password/>
+                <networks><ip>127.0.0.1</ip><ip>::1</ip></networks>
+                <profile>default</profile>
+                <quota>default</quota>
+                <access_management>1</access_management>
+              </default>
+            </users>
+          </clickhouse>
+          EOF
+          "$cache/clickhouse" server --daemon --config-file="$home/config.xml" \
+            --pid-file="$home/clickhouse.pid" -- \
+            --path="$home/data/" --tmp_path="$home/tmp/" --user_files_path="$home/user_files/" \
+            --format_schema_path="$home/format_schemas/" --logger.log="$home/clickhouse.log" \
+            --logger.errorlog="$home/clickhouse.err.log" --logger.level=warning \
+            --listen_host=127.0.0.1 --http_port="$CLICKHOUSE_HTTP_PORT" \
+            --tcp_port="$CLICKHOUSE_TCP_PORT" --interserver_http_port="$CLICKHOUSE_INTERSERVER_PORT" \
+            --mysql_port= --postgresql_port=
+          for attempt in $(seq 1 30); do
+            curl --fail --silent "http://127.0.0.1:$CLICKHOUSE_HTTP_PORT/ping" && break
+            sleep 1
+          done
+          curl --fail --silent --show-error "http://127.0.0.1:$CLICKHOUSE_HTTP_PORT/" \
+            --data-binary "SELECT version()"
+
+      - name: Provision least-privilege database role
+        env:
+          PGHOST: localhost
+          PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        run: |
+          sh docker/postgres/001-create-gateway-app.sh
+          sh docker/postgres/002-create-gateway-data-plane.sh
+
+      - name: Provision restore-drill target database
+        env:
+          PGHOST: localhost
+          PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        run: |
+          psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --command "CREATE DATABASE gateway_restore"
+          POSTGRES_DB=gateway_restore sh docker/postgres/001-create-gateway-app.sh
+
+      - name: Provision first-run setup database
+        env:
+          PGHOST: localhost
+          PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        run: |
+          psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --command "CREATE DATABASE gateway_first_run"
+          POSTGRES_DB=gateway_first_run sh docker/postgres/001-create-gateway-app.sh
+
+      - name: Provision migration upgrade test database
+        env:
+          PGHOST: localhost
+          PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        run: |
+          psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --command "CREATE DATABASE gateway_migration"
+          POSTGRES_DB=gateway_migration sh docker/postgres/001-create-gateway-app.sh
+          # The tests drop and recreate the gateway schema in this throwaway database.
+          psql --username "$POSTGRES_USER" --dbname gateway_migration --command "GRANT CREATE ON DATABASE gateway_migration TO \"$GATEWAY_APP_USER\""
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run tests
+        env:
+          # Integration tests skip silently without this; CI must exercise them.
+          GATEWAY_TEST_DATABASE_URL: postgres://${{ env.GATEWAY_APP_USER }}:${{ env.GATEWAY_APP_PASSWORD }}@localhost:${{ env.PGPORT }}/${{ env.POSTGRES_DB }}
+          # The data-plane test connects as the least-privilege data plane role.
+          GATEWAY_TEST_DATA_PLANE_DATABASE_URL: postgres://gateway_data_plane:${{ env.GATEWAY_DATA_PLANE_PASSWORD }}@localhost:${{ env.PGPORT }}/${{ env.POSTGRES_DB }}
+          # The backup/restore drill restores into this empty database.
+          GATEWAY_RESTORE_TEST_DATABASE_URL: postgres://${{ env.GATEWAY_APP_USER }}:${{ env.GATEWAY_APP_PASSWORD }}@localhost:${{ env.PGPORT }}/gateway_restore
+          # First-run setup needs a database without organizations.
+          GATEWAY_FIRST_RUN_TEST_DATABASE_URL: postgres://${{ env.GATEWAY_APP_USER }}:${{ env.GATEWAY_APP_PASSWORD }}@localhost:${{ env.PGPORT }}/gateway_first_run
+          # The rate-limit migration tests rebuild the schema in a database of their own.
+          GATEWAY_MIGRATION_TEST_DATABASE_URL: postgres://${{ env.GATEWAY_APP_USER }}:${{ env.GATEWAY_APP_PASSWORD }}@localhost:${{ env.PGPORT }}/gateway_migration
+          # The analytics sink's tests; each makes and drops its own database.
+          GATEWAY_TEST_CLICKHOUSE_URL: http://127.0.0.1:${{ env.CLICKHOUSE_HTTP_PORT }}
+        run: cargo test --all-targets --no-fail-fast
+
+      - name: Drop the PostgreSQL cluster
+        if: always()
+        run: sudo pg_dropcluster --stop 16 main 2>/dev/null || true
+
+      - name: Stop ClickHouse
+        if: always()
+        run: |
+          home="$RUNNER_TEMP/clickhouse"
+          if [ -f "$home/clickhouse.pid" ]; then
+            kill "$(cat "$home/clickhouse.pid")" 2>/dev/null || true
+            for attempt in $(seq 1 30); do
+              kill -0 "$(cat "$home/clickhouse.pid")" 2>/dev/null || break
+              sleep 1
+            done
+          fi
+          rm -rf "$home"

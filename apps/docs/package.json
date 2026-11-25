@@ -1,0 +1,25 @@
+{
+  "name": "@gateway/docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev .",
+    "build": "vitepress build .",
+    "preview": "vitepress preview .",
+    "check:contract": "node scripts/generate-errors.mjs --check && node scripts/check-contract.mjs",
+    "generate:errors": "node scripts/generate-errors.mjs",
+    "check:a11y": "node scripts/check-accessibility.mjs",
+    "test": "node --test scripts/llms.test.mjs"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "13.1.0",
+    "@axe-core/playwright": "4.14.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "playwright": "1.64.0",
+    "vitepress": "1.6.4"
+  },
+  "overrides": {
+    "vite": "^6.4.6"
+  }
+}

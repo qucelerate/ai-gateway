@@ -1,0 +1,563 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin email domains and email-first sign-in API",
+    "version": "1.0.0",
+    "description": "Email-first sign-in: the sign-in page asks for an email address and `POST /sign-in/start` says where to go next. An address whose domain an organization has verified goes to that organization's own identity provider (when it is enabled), with the address as the OIDC `login_hint`. Otherwise the gateway's own provider is used, again with `login_hint` (with local accounts on, `password` says a password would also do); otherwise, with only local accounts, the page asks for the password. Signing in by organization short name (`GET /oidc/start?organization={slug}`) stays as a fallback.\n\nDomains: an organization's owners add a domain and publish the TXT record the API returns (`gateway-domain-verification=<token>` at `_gateway-verification.<domain>`), then ask the gateway to verify it. The first organization to verify a domain owns it; a domain has at most one owner on a gateway. The record is checked when verification is asked for, not again afterwards. Removing a domain marks it deleted (kept for the audit trail) and stops routing at once. Changes are audited as `organization_domain.added`, `.verified` and `.removed`. Errors are `application/problem+json`."
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie. Writes need the `X-CSRF-Token` header matching the `__Host-gateway_csrf` cookie."
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "Domain": {
+        "type": "object",
+        "required": [
+          "id",
+          "domain",
+          "status",
+          "created_at",
+          "verified_at",
+          "last_checked_at",
+          "record"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "domain": {
+            "type": "string",
+            "description": "Lowercase, without a trailing dot.",
+            "examples": [
+              "example.com"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "verified"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "verified_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_checked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The last verification attempt."
+          },
+          "record": {
+            "type": "object",
+            "required": [
+              "type",
+              "name",
+              "value"
+            ],
+            "description": "The DNS record that proves the domain. Publish it, then verify.",
+            "properties": {
+              "type": {
+                "const": "TXT"
+              },
+              "name": {
+                "type": "string",
+                "examples": [
+                  "_gateway-verification.example.com"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "examples": [
+                  "gateway-domain-verification=3f2c\u2026"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/admin/v1/sign-in/start": {
+      "post": {
+        "operationId": "startSignIn",
+        "security": [
+          {}
+        ],
+        "summary": "Where an email address signs in",
+        "description": "No session needed. A browser request must come from `GATEWAY_ORIGIN`. A redirect answer also sets the login transaction's browser-binding cookie, as `GET /oidc/start` does. The answer reveals whether a domain is claimed by an organization with its own provider (as any home-realm discovery does), never whether an account exists.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The next step.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "next"
+                      ],
+                      "properties": {
+                        "next": {
+                          "const": "password"
+                        }
+                      },
+                      "description": "Ask for the password (`POST /password/sign-in`)."
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "next",
+                        "authorization_url",
+                        "password"
+                      ],
+                      "properties": {
+                        "next": {
+                          "const": "redirect"
+                        },
+                        "authorization_url": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "password": {
+                          "type": "boolean",
+                          "description": "A password is also accepted (by this address's organization, or, for the gateway's own provider, by local accounts), so the page may offer it instead."
+                        }
+                      },
+                      "description": "Send the browser to `authorization_url`."
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request`: not an email address.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`cross_origin_request_refused`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`sign_in_unavailable` (neither local accounts nor OIDC), `oidc_provider_unavailable` or `auth_store_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{organization_id}/domains": {
+      "parameters": [
+        {
+          "name": "organization_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listDomains",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "The organization's email domains",
+        "description": "Any member.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Domain"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "addDomain",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Add a domain to verify",
+        "description": "Owners only, from a browser session with the CSRF token. Answers the domain, pending, with the record to publish.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "domain"
+                ],
+                "properties": {
+                  "domain": {
+                    "type": "string",
+                    "description": "A host name of at least two labels, at most 231 characters, so that its verification record name fits DNS's 253-character limit.",
+                    "examples": [
+                      "example.com"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Domain"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request`: not a domain name of at least two labels.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` (not an owner) or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found` (no such organization, or not a member).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`domain_exists` (listed already) or `domain_claimed` (another organization verified it).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{organization_id}/domains/{domain_id}": {
+      "parameters": [
+        {
+          "name": "organization_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "domain_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "removeDomain",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Remove a domain",
+        "description": "Owners only, from a browser session with the CSRF token. The domain is kept, marked deleted, and no longer routes sign-in; another organization may then verify it.",
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` (not an owner) or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found` or `domain_not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{organization_id}/domains/{domain_id}/verify": {
+      "parameters": [
+        {
+          "name": "organization_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "domain_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "verifyDomain",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Check the domain's TXT record now",
+        "description": "Owners only, from a browser session with the CSRF token. Answers the domain: `verified` once the record is found, `pending` (with `last_checked_at` updated) while it is not. DNS changes can take a while to reach the gateway's resolver.",
+        "responses": {
+          "200": {
+            "description": "The domain after the check.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Domain"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` (not an owner) or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found` or `domain_not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`domain_claimed`: another organization verified it first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`dns_unavailable`: the lookup failed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

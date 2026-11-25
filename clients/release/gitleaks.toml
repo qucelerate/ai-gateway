@@ -1,0 +1,11 @@
+# Secret scan of the clients and their release artifacts: gitleaks' default
+# rules, plus the gateway's own API keys (gw_ and 64 hex digits, as
+# src/domain/keys.rs makes them).
+[extend]
+useDefault = true
+
+[[rules]]
+id = "gateway-api-key"
+description = "Gateway API key"
+regex = '''\bgw_[0-9a-f]{64}\b'''
+keywords = ["gw_"]

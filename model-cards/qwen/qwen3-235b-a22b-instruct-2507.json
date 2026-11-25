@@ -1,0 +1,41 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "qwen/qwen3-235b-a22b-instruct-2507",
+  "name": "Qwen3-235B-A22B-Instruct-2507",
+  "vendor": "Qwen",
+  "matches": {
+    "bedrock": [
+      "qwen.qwen3-235b-a22b-2507-v1:0"
+    ]
+  },
+  "overview": {
+    "license": {
+      "value": "apache-2.0",
+      "source_url": "https://huggingface.co/Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "open_weight": {
+      "value": true,
+      "source_url": "https://huggingface.co/Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "context_window_tokens": {
+      "value": 262144,
+      "source_url": "https://huggingface.co/Qwen/Qwen3-235B-A22B-Instruct-2507/blob/main/config.json",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    }
+  },
+  "evaluations": [],
+  "safety": {
+    "model_card_url": {
+      "value": "https://arxiv.org/abs/2505.09388",
+      "source_url": "https://arxiv.org/abs/2505.09388",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider",
+      "title": "Qwen3 Technical Report"
+    }
+  }
+}

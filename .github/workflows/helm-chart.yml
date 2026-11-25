@@ -1,0 +1,74 @@
+name: Helm chart
+
+# Lints and renders deploy/helm/ai-gateway, the chart release-images.yml
+# publishes: with its defaults, and with every optional part turned on.
+on:
+  push:
+    # main only: a pull request runs this for its branch.
+    branches: [main]
+    paths:
+      - "deploy/helm/**"
+      - ".github/workflows/helm-chart.yml"
+  pull_request:
+    paths:
+      - "deploy/helm/**"
+      - ".github/workflows/helm-chart.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helm-chart-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-render:
+    # Needs nothing the self-hosted runner keeps; GitHub's runners do.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Helm
+        uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: v4.3.2
+
+      - name: Lint
+        run: helm lint --strict deploy/helm/ai-gateway --set host=gateway.example.com
+
+      - name: Render with the defaults
+        run: |
+          helm template ai-gateway deploy/helm/ai-gateway --set host=gateway.example.com > /dev/null
+          # host has no default: rendering without it must fail.
+          if helm template ai-gateway deploy/helm/ai-gateway > /dev/null 2>&1; then
+            echo "::error::the chart rendered without host"; exit 1
+          fi
+
+      - name: Render with every optional part
+        run: |
+          helm template ai-gateway deploy/helm/ai-gateway --set host=gateway.example.com \
+            --set docs.enabled=true,docs.host=docs.example.com \
+            --set dataPlane.enabled=true,dataPlane.host=inference.example.com \
+            --set http3.enabled=true \
+            --set metrics.enabled=true,metrics.podMonitor.enabled=true \
+            --set cloudIdentity.aws.roleArn=arn:aws:iam::123456789012:role/example \
+            --set cloudIdentity.azure.tenantId=t,cloudIdentity.azure.clientId=c \
+            --set cloudIdentity.google.workloadIdentityProvider=//iam.googleapis.com/example \
+            --set cloudIdentity.google.serviceAccount=sa@example.iam.gserviceaccount.com \
+            --set network.ipFamilyPolicy=PreferDualStack > /dev/null
+
+      # No homelab or private-registry leftovers in what a public user gets.
+      - name: Check the defaults pull only public images
+        run: |
+          rendered="$(helm template ai-gateway deploy/helm/ai-gateway --set host=gateway.example.com,docs.enabled=true,docs.host=d.example.com)"
+          if grep -n 'imagePullSecrets' <<<"$rendered"; then
+            echo "::error::the default chart sets imagePullSecrets"; exit 1
+          fi
+          images="$(grep -oE 'image: "[^"]+"' <<<"$rendered" | sort -u)"
+          echo "$images"
+          [ -n "$images" ] || { echo "::error::found no image lines in the rendered chart"; exit 1; }
+          if grep -vE 'image: "ghcr\.io/qucelerate/ai-gateway(-admin|-docs)?:[0-9]' <<<"$images"; then
+            echo "::error::a default image is not a public release image"; exit 1
+          fi

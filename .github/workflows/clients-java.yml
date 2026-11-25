@@ -1,0 +1,61 @@
+name: Java client
+
+on:
+  push:
+    # main only: a pull request runs this for its branch.
+    branches: [main]
+    paths:
+      - ".github/actions/apt-packages/**"
+      - "clients/java/**"
+      - "clients/conformance/**"
+      - ".github/workflows/clients-java.yml"
+  pull_request:
+    paths:
+      - ".github/actions/apt-packages/**"
+      - "clients/java/**"
+      - "clients/conformance/**"
+      - ".github/workflows/clients-java.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-java-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: clients/java
+
+jobs:
+  check-and-test:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    strategy:
+      matrix:
+        # 17 is the oldest release supported (pom.xml compiles with --release 17).
+        java: ["17", "21", "25"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Java
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      - name: Install Maven
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: mvn=maven
+
+      # The tests include ConformanceTest, which runs every case of
+      # clients/conformance; -Werror fails the build on any compiler warning.
+      - name: Build and test
+        run: mvn -B -ntp verify
+
+      - name: Compile the example
+        run: |
+          mvn -B -ntp -q dependency:build-classpath -Dmdep.includeScope=runtime -Dmdep.outputFile=classpath.txt
+          javac -d target/examples -cp "target/classes:$(cat classpath.txt)" examples/Chat.java

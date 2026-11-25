@@ -1,0 +1,97 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "anthropic/claude-opus-5-5",
+  "name": "Claude Opus 5.5",
+  "vendor": "Anthropic",
+  "matches": {
+    "azure-ai-foundry": [
+      "claude-opus-5-5"
+    ],
+    "anthropic": [
+      "claude-opus-5-5"
+    ],
+    "bedrock": [
+      "anthropic.claude-opus-5-5",
+      "us.anthropic.claude-opus-5-5",
+      "global.anthropic.claude-opus-5-5",
+      "eu.anthropic.claude-opus-5-5",
+      "au.anthropic.claude-opus-5-5",
+      "jp.anthropic.claude-opus-5-5"
+    ],
+    "gemini": [
+      "anthropic/claude-opus-5-5"
+    ]
+  },
+  "overview": {
+    "release_date": {
+      "value": "2026-09-22",
+      "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "family": {
+      "value": "Claude Opus",
+      "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_in": {
+      "value": [
+        "text",
+        "image"
+      ],
+      "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_out": {
+      "value": [
+        "text"
+      ],
+      "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "context_window_tokens": {
+      "value": 1000000,
+      "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "max_output_tokens": {
+      "value": 128000,
+      "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "knowledge_cutoff": {
+      "value": "Jun 2026",
+      "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "retirement": {
+      "value": "Not sooner than September 22, 2027",
+      "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    }
+  },
+  "evaluations": [],
+  "safety": {
+    "model_card_url": {
+      "value": "https://www.anthropic.com/claude-opus-5-5-system-card",
+      "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "System card: Claude Opus 5.5"
+    },
+    "acceptable_use_url": {
+      "value": "https://www.anthropic.com/legal/aup",
+      "source_url": "https://www.anthropic.com/legal/aup",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "Anthropic Usage Policy"
+    }
+  }
+}

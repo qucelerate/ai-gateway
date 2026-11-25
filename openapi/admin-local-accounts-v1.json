@@ -1,0 +1,1236 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin local accounts API",
+    "version": "1.0.0",
+    "description": "Local accounts let people sign in with an email address and a password the gateway keeps, so a new installation can be tried before it is registered with any identity provider. They are on by default (`GATEWAY_LOCAL_ACCOUNTS`) wherever the session secrets and `GATEWAY_ORIGIN` are set, also without OIDC and on plain `http://localhost`. A local account is a user like any other, keyed on `(issuer, subject)` with the issuer `urn:gateway:local` and its own id as subject; accounts are never linked to an OIDC user by email.\n\nFirst-run setup: while no organization exists, the gateway logs a single-use link (`{GATEWAY_ORIGIN}/admin/setup#token=\u2026`, 24 hours; `gateway setup-link` makes another) that creates the first organization and its owner, who also administers the deployment. The gateway sends no email: setup, reset and invitation links are shown to whoever creates them, who sends them on. Tokens travel in the link's fragment, so they reach no server log, and only their SHA-256 digests are stored.\n\nPasswords: 12 to 256 characters, at least four different ones, not one of the 10,000 most common passwords (also with digits or symbols added around it), not digits alone, and not containing the email address or its name part. They are hashed with Argon2id (19 MiB, 2 passes). Requests that work without a session accept a browser request only from `GATEWAY_ORIGIN`. Turning local accounts off ends every password session. Errors are `application/problem+json`."
+  },
+  "paths": {
+    "/api/admin/v1/sign-in/options": {
+      "get": {
+        "operationId": "signInOptions",
+        "security": [],
+        "summary": "What the sign-in page offers",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "password",
+                    "oidc",
+                    "setup_required"
+                  ],
+                  "properties": {
+                    "password": {
+                      "type": "boolean",
+                      "description": "Email-and-password sign-in is offered."
+                    },
+                    "oidc": {
+                      "type": "boolean",
+                      "description": "The gateway's own OpenID Connect provider is configured."
+                    },
+                    "setup_required": {
+                      "type": "boolean",
+                      "description": "No organization exists yet: first-run setup is waiting; its link is in the gateway's log."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/setup/check": {
+      "post": {
+        "operationId": "checkSetupLink",
+        "security": [],
+        "summary": "Whether a first-run setup link still works",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "The token from the link's fragment (`#token=\u2026`)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valid"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`cross_origin_request_refused`: a browser request from another origin than `GATEWAY_ORIGIN`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`local_accounts_disabled`: this gateway does not offer password accounts.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/setup": {
+      "post": {
+        "operationId": "completeSetup",
+        "security": [],
+        "summary": "First-run setup: the first organization and its owner",
+        "description": "Only while no organization exists. Creates the organization, its owner as a local account who also administers the deployment, uses up every setup link, and signs the owner in. Serialized: a second setup fails with `setup_already_done`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "token",
+                  "organization_name",
+                  "organization_slug",
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "The token from the link's fragment (`#token=\u2026`)."
+                  },
+                  "organization_name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "organization_slug": {
+                    "type": "string",
+                    "description": "1 to 64 lowercase letters, digits and hyphens, not starting with a hyphen.",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "display_name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "password": {
+                    "type": "string",
+                    "description": "At least 12 characters; see the password rules in the API description.",
+                    "minLength": 12,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Signed in: sets the `__Host-gateway_session`, `__Host-gateway_oidc_browser` and `__Host-gateway_csrf` cookies.",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "organization_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`cross_origin_request_refused`: a browser request from another origin than `GATEWAY_ORIGIN`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`setup_link_invalid` (unknown, used or expired link) or `local_accounts_disabled`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`setup_already_done`: an organization exists.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The password is refused: `password_too_short`, `password_too_long`, `password_too_common`, `password_contains_email` or `password_too_repetitive`, with a sentence in `detail`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`sign_in_busy`: too many passwords are being checked at once; retry after `Retry-After`. `auth_store_unavailable`: the store is unreachable.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/password/sign-in": {
+      "post": {
+        "operationId": "passwordSignIn",
+        "security": [],
+        "summary": "Sign in with an email address and a password",
+        "description": "Five failed passwords in a row lock the account for 30 seconds, doubling with each further failure up to 15 minutes; 20 failures from one client address in 15 minutes refuse that address for the rest of the window. An unknown address answers exactly as a wrong password.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in: sets the `__Host-gateway_session`, `__Host-gateway_oidc_browser` and `__Host-gateway_csrf` cookies.",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`invalid_credentials`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`enabled_membership_required` (disabled, or in no organization), `sso_required` (every organization of the person requires its own identity provider) or `cross_origin_request_refused`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`local_accounts_disabled`: this gateway does not offer password accounts.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`too_many_attempts`: too many failed passwords from this address or for this account.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`sign_in_busy`: too many passwords are being checked at once; retry after `Retry-After`. `auth_store_unavailable`: the store is unreachable.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/me/password": {
+      "post": {
+        "operationId": "changePassword",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Change the signed-in local account's password",
+        "description": "Needs the CSRF token. The account's other sessions end; this one stays.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "current_password",
+                  "new_password"
+                ],
+                "properties": {
+                  "current_password": {
+                    "type": "string"
+                  },
+                  "new_password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed."
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`current_password_incorrect` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`not_a_local_account`: the account signs in with an identity provider.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The password is refused: `password_too_short`, `password_too_long`, `password_too_common`, `password_contains_email` or `password_too_repetitive`, with a sentence in `detail`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`too_many_attempts`: too many failed passwords from this address or for this account.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`sign_in_busy`: too many passwords are being checked at once; retry after `Retry-After`. `auth_store_unavailable`: the store is unreachable.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/password/reset/check": {
+      "post": {
+        "operationId": "checkResetLink",
+        "security": [],
+        "summary": "Whether a reset link still works, and for which address",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "The token from the link's fragment (`#token=\u2026`)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "email"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "email": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`cross_origin_request_refused`: a browser request from another origin than `GATEWAY_ORIGIN`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`local_accounts_disabled`: this gateway does not offer password accounts.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/password/reset": {
+      "post": {
+        "operationId": "resetPassword",
+        "security": [],
+        "summary": "Set a new password with a reset link",
+        "description": "Every session of the account ends; the person then signs in. A link works once, for 24 hours, and a newer link for the same account replaces it.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "token",
+                  "password"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "The token from the link's fragment (`#token=\u2026`)."
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Set."
+          },
+          "403": {
+            "description": "`cross_origin_request_refused`: a browser request from another origin than `GATEWAY_ORIGIN`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`reset_link_invalid` or `local_accounts_disabled`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The password is refused: `password_too_short`, `password_too_long`, `password_too_common`, `password_contains_email` or `password_too_repetitive`, with a sentence in `detail`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`sign_in_busy`: too many passwords are being checked at once; retry after `Retry-After`. `auth_store_unavailable`: the store is unreachable.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/invitations/inspect": {
+      "post": {
+        "operationId": "inspectInvitation",
+        "security": [],
+        "summary": "What an invitation offers its holder",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "The token from the link's fragment (`#token=\u2026`)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "organization_name",
+                    "role",
+                    "password",
+                    "sso"
+                  ],
+                  "properties": {
+                    "organization_name": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "owner",
+                        "admin",
+                        "member",
+                        "auditor",
+                        "read-only"
+                      ]
+                    },
+                    "password": {
+                      "type": "boolean",
+                      "description": "It may be accepted with a local account: local accounts are on, it is not bound to the organization's own identity provider, and the organization does not require that provider."
+                    },
+                    "sso": {
+                      "type": "boolean",
+                      "description": "It may be accepted by signing in with the identity provider it names: open `/api/admin/v1/invitations/accept?token=\u2026&method=sso`."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`cross_origin_request_refused`: a browser request from another origin than `GATEWAY_ORIGIN`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`invitation_invalid`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/invitations/accept-password": {
+      "post": {
+        "operationId": "acceptInvitationWithPassword",
+        "security": [],
+        "summary": "Accept an invitation with a local account",
+        "description": "With an email address that has no local account, creates one with this password. With one that has, the password must be that account's: the invitation adds the organization to it. Raises the person's access to the invited role, never lowering anything, and signs them in.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "token",
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "The token from the link's fragment (`#token=\u2026`)."
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in: sets the `__Host-gateway_session`, `__Host-gateway_oidc_browser` and `__Host-gateway_csrf` cookies.",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`invalid_credentials`: an account with this address exists and the password is not its.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`enabled_membership_required` (the account is disabled) or `cross_origin_request_refused`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`invitation_invalid` or `local_accounts_disabled`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`account_exists`: an account with this address was created meanwhile.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The password is refused: `password_too_short`, `password_too_long`, `password_too_common`, `password_contains_email` or `password_too_repetitive`, with a sentence in `detail`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`too_many_attempts`: too many failed passwords from this address or for this account.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`sign_in_busy`: too many passwords are being checked at once; retry after `Retry-After`. `auth_store_unavailable`: the store is unreachable.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{organization_id}/members/{user_id}/password-reset-link": {
+      "post": {
+        "operationId": "createMemberResetLink",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "An owner's password-reset link for a member",
+        "description": "Owners only, from a browser session with the CSRF token (agent tokens are refused). The member must have a local account, belong to no organization the owner does not own, and not administer the deployment unless the owner does; otherwise only the operator can reset them (`gateway user reset-password`). The link is in this response only; it works once, for 24 hours. Audited as `membership.password_reset_link_created`.",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "link",
+                    "expires_at"
+                  ],
+                  "properties": {
+                    "link": {
+                      "type": "string",
+                      "description": "`{GATEWAY_ORIGIN}/admin/reset-password#token=\u2026`."
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` (not an owner), `reset_requires_operator` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`local_account_not_found`, `not_found` or `local_accounts_disabled`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{organization_id}/sign-in-policy": {
+      "parameters": [
+        {
+          "name": "organization_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSignInPolicy",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "agentToken": []
+          }
+        ],
+        "summary": "The organization's sign-in policy",
+        "description": "Any member.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "require_sso",
+                    "identity_provider_enabled",
+                    "passwords_allowed",
+                    "local_accounts"
+                  ],
+                  "properties": {
+                    "require_sso": {
+                      "type": "boolean",
+                      "description": "The organization requires its own identity provider."
+                    },
+                    "identity_provider_enabled": {
+                      "type": "boolean"
+                    },
+                    "passwords_allowed": {
+                      "type": "boolean",
+                      "description": "Members may act here with a password session now: not both of the above."
+                    },
+                    "local_accounts": {
+                      "type": "boolean",
+                      "description": "This gateway offers password accounts at all."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setSignInPolicy",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Require (or stop requiring) the organization's own identity provider",
+        "description": "Owners only, from a browser session with the CSRF token. Requiring it needs that provider enabled (`identity_provider_required` otherwise). While it is required and enabled, password sessions cannot act in the organization (the router answers `403 {\"error\": \"sso_required\"}`), it is left out of their organization list, password sign-in needs another organization, and its invitations cannot be accepted with a password. Disabling the provider lifts the requirement until it is enabled again. Audited as `organization.sso_required` or `organization.sso_not_required`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "require_sso"
+                ],
+                "properties": {
+                  "require_sso": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The policy now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "require_sso",
+                    "identity_provider_enabled",
+                    "passwords_allowed",
+                    "local_accounts"
+                  ],
+                  "properties": {
+                    "require_sso": {
+                      "type": "boolean",
+                      "description": "The organization requires its own identity provider."
+                    },
+                    "identity_provider_enabled": {
+                      "type": "boolean"
+                    },
+                    "passwords_allowed": {
+                      "type": "boolean",
+                      "description": "Members may act here with a password session now: not both of the above."
+                    },
+                    "local_accounts": {
+                      "type": "boolean",
+                      "description": "This gateway offers password accounts at all."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`identity_provider_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie. Writes need the `X-CSRF-Token` header matching the `__Host-gateway_csrf` cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_\u2026"
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

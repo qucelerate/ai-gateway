@@ -1,0 +1,49 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "xai/grok-4.7",
+  "name": "Grok 4.7",
+  "vendor": "xAI",
+  "matches": {
+    "azure-ai-foundry": [
+      "grok-4.7"
+    ],
+    "bedrock": [
+      "xai.grok-4.7",
+      "us.xai.grok-4.7",
+      "global.xai.grok-4.7"
+    ]
+  },
+  "overview": {
+    "context_window_tokens": {
+      "value": 500000,
+      "source_url": "https://docs.x.ai/developers/models/grok-4.7",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_in": {
+      "value": [
+        "text",
+        "image"
+      ],
+      "source_url": "https://docs.x.ai/developers/models/grok-4.7",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_out": {
+      "value": [
+        "text"
+      ],
+      "source_url": "https://docs.x.ai/developers/models/grok-4.7",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "knowledge_cutoff": {
+      "value": "May 2026",
+      "source_url": "https://docs.x.ai/docs/models",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    }
+  },
+  "evaluations": [],
+  "safety": {}
+}

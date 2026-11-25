@@ -1,0 +1,55 @@
+# The functional suite's stack: compose.yaml's app profile, with AWS faked.
+# run.sh passes this after compose.yaml, with the generated env file; paths
+# are relative to the repository root.
+services:
+  migrate:
+    environment: &functional-environment
+      GATEWAY_ORIGIN: http://localhost:${GATEWAY_HTTP_PORT}
+      OIDC_REDIRECT_URI: http://localhost:${GATEWAY_HTTP_PORT}/api/admin/v1/oidc/callback
+      # Sign-in is seeded (see support/seed.ts). Sessions need OIDC enabled,
+      # but the provider is only contacted on a sign-in, which never happens.
+      OIDC_ENABLED: "true"
+      OIDC_ISSUER: https://issuer.example.invalid
+      OIDC_AUDIENCE: gateway
+      OIDC_CLIENT_ID: gateway-functional
+      OIDC_SESSION_HMAC_SECRET: ${OIDC_SESSION_HMAC_SECRET}
+      OIDC_SESSION_ENCRYPTION_KEY: ${OIDC_SESSION_ENCRYPTION_KEY}
+      API_KEY_PEPPER: ${API_KEY_PEPPER}
+      GATEWAY_CREDENTIAL_ENCRYPTION_KEY: ${GATEWAY_CREDENTIAL_ENCRYPTION_KEY}
+      # Bedrock for tenants, through the fake on the gateway's loopback.
+      BEDROCK_AWS_REGION: us-east-2
+      BEDROCK_AWS_ACCESS_KEY_ID: AKIAFUNCTIONALTEST01
+      BEDROCK_AWS_SECRET_ACCESS_KEY: functional-gateway-secret
+      BEDROCK_STS_ENDPOINT: http://127.0.0.1:4599/sts/
+      BEDROCK_CONTROL_BASE_URL: http://127.0.0.1:4599/control
+      BEDROCK_BASE_URL: http://127.0.0.1:4599/runtime
+      GATEWAY_ONBOARDING_AWS_PRINCIPAL_ARN: arn:aws:iam::111122223333:role/gateway-functional
+      GATEWAY_ONBOARDING_AWS_TEMPLATE_URL: https://templates.example.invalid/qucelerate-gateway.yaml
+      RUST_LOG: ${RUST_LOG:-info}
+
+  gateway:
+    # Only the settings above: never the developer's own .env (a KMS key,
+    # real provider keys), which compose.yaml reads.
+    env_file: !reset []
+    environment: *functional-environment
+    ports:
+      - "127.0.0.1:${FAKES_PORT}:4599"
+
+  fakes:
+    profiles: [app]
+    # The admin image's node; CI sets NODE_IMAGE to its GHCR copy.
+    image: ${NODE_IMAGE:-public.ecr.aws/docker/library/node:22.22.2-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e}
+    command: ["node", "/fakes/aws.mjs"]
+    user: node
+    network_mode: service:gateway
+    volumes:
+      - ./tests/functional/fakes:/fakes:ro
+    # Healthy once it answers, so `up --wait` returns only when it does.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4599/__requests').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      - gateway
+    restart: unless-stopped

@@ -1,0 +1,14 @@
+# cargo-audit configuration; CI runs `cargo audit` on every change.
+[advisories]
+ignore = [
+    # rsa: Marvin timing side channel. It is listed in Cargo.lock only as a
+    # dependency of sqlx-mysql, which this build never compiles (the gateway
+    # enables only the postgres driver), so no rsa code is in the binary.
+    # CI fails if rsa enters the build (see the advisories job).
+    "RUSTSEC-2023-0071",
+    # libsqlite3-sys: SQLite WAL uninitialized-memory read (CVE-2026-119375).
+    # Listed in Cargo.lock only as a dependency of sqlx-sqlite, which this
+    # build never compiles (postgres driver only), so no SQLite is linked.
+    # CI fails if libsqlite3-sys enters the build (see the advisories job).
+    "RUSTSEC-2026-0459",
+]

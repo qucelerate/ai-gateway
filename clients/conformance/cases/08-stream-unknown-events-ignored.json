@@ -1,0 +1,74 @@
+{
+  "name": "stream_unknown_events_ignored",
+  "description": "Comment lines and unknown events are skipped, unknown data fields ignored, and open strings passed through.",
+  "operation": "chat_stream",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions/stream",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-stream-1",
+        "cache-control": "no-store"
+      },
+      "sse": "stream-unknown-fields.sse"
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "events": [
+      {
+        "event": "response.started",
+        "data": {
+          "model": "chat-default"
+        }
+      },
+      {
+        "event": "choice.delta",
+        "data": {
+          "content_delta": "Hi"
+        }
+      },
+      {
+        "event": "choice.finished",
+        "data": {
+          "finish_reason": "some_future_reason"
+        }
+      },
+      {
+        "event": "response.completed",
+        "data": {
+          "model": "chat-default",
+          "usage": null
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,1156 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway Inference API",
+    "version": "1.0.0",
+    "description": "Stable since 1.0.0 (2026-11-06). Within `/api/inference/v1/` the contract changes only compatibly: new endpoints, new optional request fields, new response fields, new SSE event names, and new values of open strings such as `finish_reason` and problem `code`. Clients must ignore response fields and SSE events they do not know. A breaking change ships under a new URL version alongside this one. See the compatibility policy in the reference documentation."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "gatewayApiKey": []
+    }
+  ],
+  "paths": {
+    "/api/inference/v1/chat/completions": {
+      "post": {
+        "operationId": "chatCompletionsV1",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Bounded chat request",
+                  "value": {
+                    "model": "chat-default",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Hello"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Completed chat response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                },
+                "examples": {
+                  "completed": {
+                    "summary": "Completed response",
+                    "value": {
+                      "id": "request-id",
+                      "model": "chat-default",
+                      "choices": [],
+                      "usage": null
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "502": {
+            "$ref": "#/components/responses/Problem502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem504"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/inference/v1/chat/completions/stream": {
+      "post": {
+        "operationId": "chatCompletionsStreamV1",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Named, non-resumable SSE events",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                },
+                "examples": {
+                  "completed": {
+                    "value": "event: response.started\ndata: {\"model\":\"chat-default\"}\n\nevent: response.completed\ndata: {\"model\":\"chat-default\",\"usage\":null}\n\n",
+                    "x-fixture": "fixtures/sse/chat-completed.sse"
+                  },
+                  "provider-error": {
+                    "value": "event: error\ndata: {\"code\":\"provider_error\",\"status\":502}\n\n",
+                    "x-fixture": "fixtures/sse/chat-error.sse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "502": {
+            "$ref": "#/components/responses/Problem502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem504"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-sse-events": [
+          {
+            "name": "response.started",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseResponseStarted"
+            }
+          },
+          {
+            "name": "choice.delta",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseChoiceDelta"
+            }
+          },
+          {
+            "name": "tool_call.delta",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseToolCallDelta"
+            }
+          },
+          {
+            "name": "choice.finished",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseChoiceFinished"
+            }
+          },
+          {
+            "name": "safety.annotation",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseSafetyAnnotation"
+            }
+          },
+          {
+            "name": "usage",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseUsage"
+            }
+          },
+          {
+            "name": "response.completed",
+            "terminal": true,
+            "schema": {
+              "$ref": "#/components/schemas/SseResponseCompleted"
+            }
+          },
+          {
+            "name": "error",
+            "terminal": true,
+            "schema": {
+              "$ref": "#/components/schemas/SseError"
+            }
+          }
+        ],
+        "x-resumable": false
+      }
+    },
+    "/api/inference/v1/embeddings": {
+      "post": {
+        "operationId": "embeddingsV1",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Bounded embedding request",
+                  "value": {
+                    "model": "embedding-default",
+                    "input": [
+                      "Hello"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Embedding vectors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingResponse"
+                },
+                "examples": {
+                  "completed": {
+                    "summary": "Completed embeddings",
+                    "value": {
+                      "object": "list",
+                      "model": "embedding-default",
+                      "data": [],
+                      "usage": null
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "502": {
+            "$ref": "#/components/responses/Problem502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem504"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "gatewayApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gw_ API key"
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "RequestId": {
+        "name": "X-Request-Id",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "headers": {
+      "RequestId": {
+        "description": "Gateway correlation identifier",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "WWW-Authenticate": {
+        "description": "Bearer authentication challenge",
+        "schema": {
+          "type": "string",
+          "const": "Bearer"
+        }
+      },
+      "Retry-After": {
+        "description": "Whole seconds to wait before retrying a request rejected by a rate or concurrency limit, or by an open provider circuit",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        }
+      }
+    },
+    "responses": {
+      "Problem": {
+        "description": "RFC 9457 problem",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        },
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        }
+      },
+      "Problem400": {
+        "description": "Bad Request",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem401": {
+        "description": "Unauthorized",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "WWW-Authenticate": {
+            "$ref": "#/components/headers/WWW-Authenticate"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem403": {
+        "description": "Forbidden",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem404": {
+        "description": "Not Found",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "examples": {
+              "unknownCatalogAlias": {
+                "summary": "Unknown catalog alias",
+                "value": {
+                  "type": "https://gateway.invalid/problems/model_unavailable",
+                  "code": "model_unavailable",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "model alias is not available for this operation",
+                  "instance": "/api/inference/v1/chat/completions",
+                  "request_id": "request-id"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Problem409": {
+        "description": "Conflict",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem413": {
+        "description": "Payload Too Large",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem415": {
+        "description": "Unsupported Media Type",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem422": {
+        "description": "Unprocessable Entity",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem429": {
+        "description": "Too Many Requests: a quota is exhausted (`quota_exceeded`), or a rate limit (`rate_limit_exceeded`) or concurrency limit (`concurrency_limit_exceeded`) is reached. Limit rejections carry `Retry-After`.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem502": {
+        "description": "Bad Gateway",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem503": {
+        "description": "Service Unavailable. The code `provider_circuit_open` means the deployment has failed repeatedly and requests to it are refused without calling the provider; it carries `Retry-After`.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem504": {
+        "description": "Gateway Timeout",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ChatRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system",
+              "developer",
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 131072
+          }
+        }
+      },
+      "ChatResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "model",
+          "choices"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "EmbeddingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "input": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 131072
+            }
+          }
+        }
+      },
+      "EmbeddingResponse": {
+        "type": "object",
+        "required": [
+          "object",
+          "model",
+          "data"
+        ],
+        "properties": {
+          "object": {
+            "const": "list"
+          },
+          "model": {
+            "type": "string"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "object",
+                "index",
+                "embedding"
+              ],
+              "properties": {
+                "object": {
+                  "const": "embedding"
+                },
+                "index": {
+                  "type": "integer"
+                },
+                "embedding": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cached_input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "reasoning_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "other_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "estimated",
+              "unknown"
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "unavailable"
+            ]
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "required": [
+          "index",
+          "message",
+          "finish_reason",
+          "tool_calls",
+          "refusal",
+          "safety",
+          "annotations"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/MessageResponse"
+          },
+          "finish_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "refusal": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "safety": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "annotations": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool_call_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SseResponseStarted": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          }
+        }
+      },
+      "SseChoiceDelta": {
+        "type": "object",
+        "required": [
+          "choice_index",
+          "content_delta",
+          "refusal_delta",
+          "annotations"
+        ],
+        "properties": {
+          "choice_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "content_delta": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refusal_delta": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "annotations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Annotation"
+            }
+          }
+        }
+      },
+      "SseToolCallDelta": {
+        "type": "object",
+        "required": [
+          "choice_index",
+          "tool_call_index",
+          "id",
+          "name",
+          "arguments_delta"
+        ],
+        "properties": {
+          "choice_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tool_call_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arguments_delta": {
+            "type": "string"
+          }
+        }
+      },
+      "SseChoiceFinished": {
+        "type": "object",
+        "required": [
+          "choice_index",
+          "finish_reason"
+        ],
+        "properties": {
+          "choice_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "finish_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "SseSafetyAnnotation": {
+        "type": "object",
+        "required": [
+          "choice_index",
+          "category",
+          "blocked"
+        ],
+        "properties": {
+          "choice_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "category": {
+            "type": "string"
+          },
+          "blocked": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SseUsage": {
+        "$ref": "#/components/schemas/Usage"
+      },
+      "SseResponseCompleted": {
+        "type": "object",
+        "required": [
+          "model",
+          "usage"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Usage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SseError": {
+        "type": "object",
+        "required": [
+          "code",
+          "status"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          }
+        }
+      },
+      "Annotation": {
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

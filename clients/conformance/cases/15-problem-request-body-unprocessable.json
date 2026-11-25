@@ -1,0 +1,60 @@
+{
+  "name": "problem_request_body_unprocessable",
+  "description": "A 422 Problem surfaces and is not retried.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 422,
+      "headers": {
+        "x-request-id": "req-422"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/request_body_unprocessable",
+        "code": "request_body_unprocessable",
+        "title": "error",
+        "status": 422,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-422"
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "error": {
+      "kind": "problem",
+      "status": 422,
+      "code": "request_body_unprocessable",
+      "request_id": "req-422"
+    }
+  }
+}

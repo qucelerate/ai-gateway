@@ -1,0 +1,922 @@
+{
+  "openapi": "3.1.0",
+  "security": [
+    {
+      "session": []
+    },
+    {
+      "agentToken": []
+    }
+  ],
+  "info": {
+    "title": "Gateway admin cloud onboarding API",
+    "version": "1.0.0",
+    "description": "What a tenant creates in its own AWS account, Azure directory or Google Cloud project so the gateway can reach its models without a long-lived key, rendered for one organization: a one-click link where the cloud has one, its CLI, and Terraform. Authenticated with a session cookie or an agent token (`Authorization: Bearer gwa_…`), which acts only in its agent's organization. Nothing returned is secret: the instructions name the gateway's own identities and the organization's AWS external ID. A cloud whose gateway identity is not configured (`GATEWAY_ONBOARDING_*`) is not offered."
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_…",
+        "description": "An agent token (`Authorization: Bearer gwa_…`), for automation: it acts as its agent, only in the agent's organization, with the agent's role. Created with `POST /api/admin/v1/organizations/{org}/agents/{agent_id}/tokens` or, on the server, `gateway agent create`."
+      }
+    },
+    "responses": {
+      "Unauthenticated": {
+        "description": "`authentication_required`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "`forbidden`: the actor lacks the required permission for the organization.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "`service_unavailable` or `authentication_unavailable`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "OnboardingSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "aws",
+          "azure",
+          "google",
+          "openai_compatible"
+        ],
+        "properties": {
+          "aws": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "principal_arn",
+                  "external_id",
+                  "role_name"
+                ],
+                "properties": {
+                  "principal_arn": {
+                    "type": "string",
+                    "description": "The gateway's AWS principal, which the tenant role trusts."
+                  },
+                  "external_id": {
+                    "type": "string",
+                    "description": "`qucelerate-<organization id>`, which the tenant role requires."
+                  },
+                  "role_name": {
+                    "type": "string",
+                    "const": "QucelerateGateway"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "azure": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "client_id"
+                ],
+                "properties": {
+                  "client_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The gateway's multi-tenant Entra app."
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "google": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "service_account"
+                ],
+                "properties": {
+                  "service_account": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "The gateway's Google service account."
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "openai_compatible": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "private_endpoints"
+            ],
+            "description": "Always offered: any organization may connect its own OpenAI-compatible endpoint. Public HTTPS endpoints need nothing from the operator.",
+            "properties": {
+              "private_endpoints": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "description": "Origins (`scheme://host[:port]`) the operator allows over plain HTTP or at private addresses (`GATEWAY_OPENAI_COMPATIBLE_PRIVATE_ENDPOINTS`), offered as suggestions."
+              }
+            }
+          }
+        }
+      },
+      "AwsInstructions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role_arn",
+          "external_id",
+          "launch_url",
+          "template_url",
+          "accept_model_agreements",
+          "batch_bucket",
+          "batch_service_role_arn",
+          "actions",
+          "cli",
+          "terraform"
+        ],
+        "properties": {
+          "role_arn": {
+            "type": "string",
+            "description": "The role the instructions create; a Bedrock credential's `role_arn`."
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "launch_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "CloudFormation quick-create with the parameters filled in; null without a published template, and in GovCloud and China, whose consoles cannot read it (use `cli` or `terraform`)."
+          },
+          "template_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accept_model_agreements": {
+            "type": "boolean",
+            "description": "Whether the role may also accept models' AWS Marketplace agreements (`accept_agreements=true`; D-035)."
+          },
+          "batch_bucket": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The staging bucket the role may run batch inference jobs through (`batch_bucket`); null unless asked for."
+          },
+          "batch_service_role_arn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The batch service role the role may pass to Bedrock (`batch_role_arn`); null unless asked for."
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The IAM actions the role is granted: Bedrock's invoke and list actions, plus `bedrock:ListFoundationModelAgreementOffers`, `bedrock:CreateFoundationModelAgreement`, `aws-marketplace:Subscribe` and `aws-marketplace:ViewSubscriptions` when opted in (no `aws-marketplace:Unsubscribe`: AWS lists it only for automatic model access, not for `CreateFoundationModelAgreement`). With `batch_bucket` and `batch_role_arn`, also `bedrock:CreateModelInvocationJob`, `bedrock:ListModelInvocationJobs`, `bedrock:GetModelInvocationJob`, `bedrock:StopModelInvocationJob`, `bedrock:TagResource`, `iam:PassRole`, `s3:PutObject`, `s3:GetObject` and `s3:ListBucket`."
+          },
+          "cli": {
+            "type": "string"
+          },
+          "terraform": {
+            "type": "string"
+          }
+        }
+      },
+      "AzureInstructions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "consent_url",
+          "client_id",
+          "role",
+          "batch",
+          "cli",
+          "terraform"
+        ],
+        "properties": {
+          "consent_url": {
+            "type": "string",
+            "description": "Admin consent to the gateway's app; Microsoft returns to `GET /api/admin/v1/onboarding/azure/consent` with the tenant ID."
+          },
+          "client_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string",
+            "description": "The role the scripts grant the app on the resource, for the requested `family`."
+          },
+          "batch": {
+            "type": "boolean",
+            "description": "Whether the scripts also create and grant the batch role (`batch=true`)."
+          },
+          "cli": {
+            "type": "string"
+          },
+          "terraform": {
+            "type": "string"
+          }
+        }
+      },
+      "GoogleInstructions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "service_account",
+          "project_id",
+          "batch_bucket",
+          "gcloud",
+          "cloud_shell_url",
+          "terraform"
+        ],
+        "properties": {
+          "service_account": {
+            "type": "string",
+            "format": "email",
+            "description": "The account the instructions create; a Gemini credential's `service_account`."
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "batch_bucket": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The batch staging bucket the scripts grant (`batch_bucket`); null unless asked for."
+          },
+          "gcloud": {
+            "type": "string"
+          },
+          "cloud_shell_url": {
+            "type": "string",
+            "description": "Opens Cloud Shell in the project, to paste the script."
+          },
+          "terraform": {
+            "type": "string"
+          }
+        }
+      },
+      "VerifyRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "adapter_instance_key",
+          "family",
+          "credential"
+        ],
+        "properties": {
+          "adapter_instance_key": {
+            "type": "string",
+            "description": "The provider account the credential will be stored for. Its configuration (endpoint, region) is the one checked, chosen exactly as inference chooses it; a key the gateway has no configuration for uses the default for tenants' credentials."
+          },
+          "family": {
+            "type": "string",
+            "enum": [
+              "openai",
+              "anthropic",
+              "gemini",
+              "bedrock",
+              "azure-openai",
+              "azure-ai-foundry",
+              "openai-compatible"
+            ]
+          },
+          "credential": {
+            "type": "object",
+            "description": "The fields `PUT .../catalog/credentials/{key}` takes (see the catalog API's ProviderSecretInput): a `role_arn`, `tenant_id` (and `endpoint`), `service_account` (and `project_id`, `location`), or keys. Never echoed or stored."
+          }
+        }
+      },
+      "Verification": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "message"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "awaiting_approval",
+              "not_configured",
+              "failed"
+            ],
+            "description": "`awaiting_approval`: an Entra directory or Google service account the gateway's operator has not bound to the organization; nothing was contacted. `not_configured`: this gateway cannot use this kind of credential for the family (for example Bedrock without a region)."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "authentication",
+              "authorization",
+              "unavailable",
+              "timeout",
+              "unsupported",
+              "provider",
+              "endpoint_not_allowed",
+              "endpoint_unresolved"
+            ],
+            "description": "`failed` only."
+          },
+          "message": {
+            "type": "string",
+            "description": "What to do next, for a person. Never the provider's response."
+          },
+          "models": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "model",
+                "display_name"
+              ],
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "display_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "`connected`: what the credential can call, sorted by id, at most 500. Azure: the resource's deployments (`display_name` is the model). Google service account on Agent Platform: Google's published Gemini and embedding models (`gemini-embedding-*`, `text-embedding-*`, `text-multilingual-embedding-*`), less any the location was found not to have; access is proven with a free token count on one of them, not checked for each: the newest Gemini chat model the location serves, of up to 16 tried newest first (Google serves its newest models, such as Gemini 4, only at `global` at first). Embedding models are not tried. A location where none of them answers is `failed` with reason `unsupported`."
+          },
+          "model_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "`connected`: every model listed."
+          },
+          "region": {
+            "type": "string",
+            "description": "Bedrock: the region the gateway calls."
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/admin/v1/organizations/{org}/onboarding": {
+      "get": {
+        "operationId": "getOnboarding",
+        "summary": "Which clouds are offered",
+        "description": "Permission `catalog_read` (owner, admin, operator, auditor, read-only member; org-wide only). Not audited.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instructions.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/onboarding/aws": {
+      "get": {
+        "operationId": "getAwsOnboarding",
+        "summary": "Connect an AWS account",
+        "description": "Permission `catalog_read` (owner, admin, operator, auditor, read-only member; org-wide only). Not audited. The role is named `QucelerateGateway`, so its ARN follows from the account ID.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{12}$"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": true,
+            "description": "Where Bedrock is called, e.g. `us-east-1`; also the console region.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "accept_agreements",
+            "in": "query",
+            "required": false,
+            "description": "Also let the role accept models' AWS Marketplace agreements, so an administrator can accept them from the gateway (D-035). Off by default. Accepting creates AWS Marketplace subscriptions billed per use. With it on, ordinary traffic routed to a Marketplace model not yet accepted can also create the subscription: Bedrock subscribes on a model's first call when the role may subscribe. Automatic offers never offer such a model before its agreement is available.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "batch_bucket",
+            "in": "query",
+            "required": false,
+            "description": "With `batch_role_arn`, also let the role run Bedrock batch inference jobs (D-021) staged through this S3 bucket: `bedrock:CreateModelInvocationJob` and `bedrock:ListModelInvocationJobs`; `bedrock:GetModelInvocationJob`, `bedrock:StopModelInvocationJob` and `bedrock:TagResource` on the region's `model-invocation-job/*`; `iam:PassRole` on the service role, passed only to `bedrock.amazonaws.com`; `s3:PutObject` and `s3:GetObject` on the bucket's objects and `s3:ListBucket` on the bucket. Off by default; give both or neither. Name the same bucket under *Batch staging*.",
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 63
+            }
+          },
+          {
+            "name": "batch_role_arn",
+            "in": "query",
+            "required": false,
+            "description": "The batch service role Bedrock assumes to read and write the staging bucket, in the same account and partition (`arn:aws:iam::<account_id>:role/...`). Required with `batch_bucket`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instructions.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AwsInstructions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`onboarding_unavailable`: the gateway's AWS identity is not configured.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_onboarding_input`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/onboarding/azure": {
+      "get": {
+        "operationId": "getAzureOnboarding",
+        "summary": "Connect an Azure directory",
+        "description": "Permission `catalog_read` (owner, admin, operator, auditor, read-only member; org-wide only). Not audited.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "resource_id",
+            "in": "query",
+            "required": false,
+            "description": "The tenant's Azure OpenAI or Foundry account, `/subscriptions/<id>/resourceGroups/<group>/providers/Microsoft.CognitiveServices/accounts/<name>`; without it the commands hold a placeholder.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "family",
+            "in": "query",
+            "required": false,
+            "description": "Which service the resource is: `azure-openai` (default) grants *Cognitive Services OpenAI User*, `azure-ai-foundry` *Cognitive Services User*; either also grants *Reader*, so discovery can list the resource's deployments.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "azure-openai",
+                "azure-ai-foundry"
+              ],
+              "default": "azure-openai"
+            }
+          },
+          {
+            "name": "batch",
+            "in": "query",
+            "required": false,
+            "description": "Also create the custom role *Qucelerate gateway batches <subscription id>* (assignable in the resource's subscription; role names are unique in the directory, so each subscription has its own) and grant it on the resource, so the app can upload batch files and create and cancel batch jobs: *Cognitive Services OpenAI User* reads files and batches but cannot write them. Its data actions: `Microsoft.CognitiveServices/accounts/OpenAI/files/write`, `.../batch-jobs/write`, `.../batches/action` and `.../batches/cancel/action`. Azure OpenAI only (`azure-ai-foundry` runs no batch jobs). Off by default.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instructions.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AzureInstructions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`onboarding_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_onboarding_input`: a malformed `resource_id`, an unknown `family`, or a malformed query (such as a repeated parameter).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/onboarding/google": {
+      "get": {
+        "operationId": "getGoogleOnboarding",
+        "summary": "Connect a Google Cloud project",
+        "description": "Permission `catalog_read` (owner, admin, operator, auditor, read-only member; org-wide only). Not audited.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$"
+            }
+          },
+          {
+            "name": "batch_bucket",
+            "in": "query",
+            "required": false,
+            "description": "Also grant this Cloud Storage staging bucket for batch prediction jobs (D-021): `roles/storage.objectCreator` and `roles/storage.objectViewer` on it to the service account and to the project's Vertex AI service agent (`service-<project number>@gcp-sa-aiplatform.iam.gserviceaccount.com`). Off by default. Name the same bucket under *Batch staging*.",
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 222
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instructions.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleInstructions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`onboarding_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_onboarding_input`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/onboarding/azure/consent": {
+      "get": {
+        "operationId": "azureConsentReturn",
+        "summary": "Return from Azure admin consent",
+        "security": [],
+        "description": "Where Microsoft returns an administrator after consent. Stores nothing: redirects to `/admin/providers?connect=azure` with `organization` (the `state` sent), and `tenant`, or `error` (Microsoft's code, letters, digits and underscores only). Values that do not parse are dropped.",
+        "parameters": [
+          {
+            "name": "tenant",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "admin_consent",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "To the admin UI's providers page."
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/onboarding/verify": {
+      "post": {
+        "operationId": "verifyCredential",
+        "summary": "Check a credential before storing it",
+        "description": "Permission `credential_write` (owner, admin; org-wide only). Not audited; nothing is stored. Signs in with the credential the way inference would for the organization (the same configuration, role assumption with the organization's external ID, or Entra or Google sign-in) and checks access without generating or billing anything: it lists the models it can call; for Azure, the resource's deployments (proving consent and the role on the resource); for a Google service account, Google's Gemini models and then a free token count in the account's project and location (proving impersonation and `roles/aiplatform.user`). An Entra directory or Google service account is contacted only once the gateway's operator has bound it to the organization. A failed sign-in is a `200` with `status: failed`: the request was valid and the cloud answered. Answers within about 30 seconds.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Verification"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "description": "`invalid_credential`: an unknown family, a credential of the wrong kind for it, unknown fields, or a malformed body.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`verification_unavailable`, or the authentication store is unavailable.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

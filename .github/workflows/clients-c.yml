@@ -1,0 +1,84 @@
+name: C client
+
+on:
+  push:
+    # main only: a pull request runs this for its branch.
+    branches: [main]
+    paths:
+      - ".github/actions/apt-packages/**"
+      - "clients/c/**"
+      - "clients/conformance/**"
+      - ".github/workflows/clients-c.yml"
+  pull_request:
+    paths:
+      - ".github/actions/apt-packages/**"
+      - "clients/c/**"
+      - "clients/conformance/**"
+      - ".github/workflows/clients-c.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-c-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: clients/c
+
+jobs:
+  build-and-test:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { cc: gcc, cxx: g++, sanitize: "OFF", build: Debug }
+          - { cc: clang, cxx: clang++, sanitize: "OFF", build: Debug }
+          # Optimized builds warn about more (format truncation, for one).
+          - { cc: gcc, cxx: g++, sanitize: "OFF", build: Release }
+          - { cc: clang, cxx: clang++, sanitize: "OFF", build: Release }
+          # AddressSanitizer and UndefinedBehaviorSanitizer over every test.
+          - { cc: gcc, cxx: g++, sanitize: "ON", build: Debug }
+          - { cc: clang, cxx: clang++, sanitize: "ON", build: Debug }
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install the C toolchain and libcurl
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: cmake=cmake clang=clang pkg-config=pkg-config libcurl4-openssl-dev
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build }} -DGATEWAY_WERROR=ON
+          -DGATEWAY_SANITIZE=${{ matrix.sanitize }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # conformance runs every case of clients/conformance.
+      - name: Run tests, including the conformance suite
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Check that only the C API is exported
+        if: matrix.sanitize == 'OFF' && matrix.build == 'Release'
+        run: |
+          exported=$(nm -D --defined-only build/libqucelerate-ai-gateway.so.0 | awk '{print $3}')
+          if echo "$exported" | grep -v '^gw_'; then
+            echo "libqucelerate-ai-gateway.so.0 exports symbols outside the gw_ API" >&2
+            exit 1
+          fi
+          # Every GW_API function of gateway.h is exported (gw_chat_request_add_tool_result_n among them).
+          declared=$(grep -oE 'GW_API [^(]*\bgw_[a-z0-9_]+\(' include/gateway/gateway.h | grep -oE 'gw_[a-z0-9_]+\($' | tr -d '(' | sort -u)
+          missing=$(comm -23 <(echo "$declared") <(echo "$exported" | sort -u))
+          if [ -n "$missing" ]; then
+            echo "gateway.h declares functions libqucelerate-ai-gateway.so.0 does not export: $missing" >&2
+            exit 1
+          fi
+          readelf -d build/libqucelerate-ai-gateway.so.0 | grep -q 'SONAME.*libqucelerate-ai-gateway.so.0'

@@ -1,0 +1,60 @@
+{
+  "name": "retry_disabled",
+  "description": "With max_retries 0 a retryable problem surfaces at once.",
+  "operation": "embeddings",
+  "client": {
+    "max_retries": 0
+  },
+  "call": {
+    "body": {
+      "model": "embedding-default",
+      "input": [
+        "first",
+        "second"
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/embeddings",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "embedding-default",
+      "input": [
+        "first",
+        "second"
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 429,
+      "headers": {
+        "retry-after": "5",
+        "x-request-id": "req-429"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/concurrency_limit_exceeded",
+        "code": "concurrency_limit_exceeded",
+        "title": "error",
+        "status": 429,
+        "detail": "detail",
+        "instance": "/api/inference/v1/embeddings",
+        "request_id": "req-429"
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "error": {
+      "kind": "problem",
+      "status": 429,
+      "code": "concurrency_limit_exceeded",
+      "retry_after": 5
+    }
+  }
+}

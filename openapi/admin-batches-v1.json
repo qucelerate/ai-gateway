@@ -1,0 +1,1562 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin batches API",
+    "version": "1.0.0",
+    "description": "An organization's batch settings (emulated batches, off by default), where its provider connections' batch jobs stage (the tenant's own S3 or Cloud Storage bucket), and its batches as the console's Usage -> Batches shows them. Every route needs a session or an agent token and answers `Cache-Control: no-store`."
+  },
+  "security": [
+    {
+      "session": []
+    },
+    {
+      "agentToken": []
+    }
+  ],
+  "paths": {
+    "/api/admin/v1/organizations/{org}/batch-settings": {
+      "get": {
+        "operationId": "getBatchSettings",
+        "summary": "Read the batch settings",
+        "description": "Permission `catalog_read`. Never set, emulated batches are off.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "The settings.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setBatchSettings",
+        "summary": "Set the batch settings",
+        "description": "Permission `catalog_write`. Audited as `batch_settings.set`. Batches already made keep the mode each job was given.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the settings's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchSettingsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "200": {
+            "description": "Replaced, or idempotent replay.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchSettings"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Set for the first time.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_batch_setting`.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/batch-staging": {
+      "get": {
+        "operationId": "listBatchStaging",
+        "summary": "List the connections' batch staging",
+        "description": "Permission `catalog_read`. Deleted staging is not listed.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "Every connection's staging.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStagingList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/batch-staging/{connection}": {
+      "put": {
+        "operationId": "setBatchStaging",
+        "summary": "Set where a connection's batch jobs stage",
+        "description": "Permission `credential_write`. Audited as `batch_staging.set`. The connection must be the organization's, of a family whose batch jobs are staged: Bedrock (`s3`: bucket, region, service role) or Gemini on Agent Platform (`gcs`: bucket only). Setting a deleted staging revives it. See the operations guide for the bucket and role permissions.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "connection",
+            "in": "path",
+            "required": true,
+            "description": "The provider connection (adapter instance key).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the staging's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchStagingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "200": {
+            "description": "Replaced, revived, or idempotent replay.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStaging"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Set for the first time.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStaging"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such connection.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_batch_setting`, or `batch_staging_unsupported` for a family whose batch jobs are not staged.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteBatchStaging",
+        "summary": "Delete a connection's staging",
+        "description": "Permission `credential_write`. Audited as `batch_staging.delete`. The row is kept, hidden. No new native job is made for the connection; jobs already sent still collect their output from the bucket.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "connection",
+            "in": "path",
+            "required": true,
+            "description": "The provider connection (adapter instance key).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the staging's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "204": {
+            "description": "Deleted.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No staging is set.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/batches": {
+      "get": {
+        "operationId": "listAdminBatches",
+        "summary": "List the organization's batches",
+        "description": "Permission `usage_read`. Newest first.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "validating",
+                "in_progress",
+                "finalizing",
+                "completed",
+                "failed",
+                "expired",
+                "cancelling",
+                "cancelled"
+              ]
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "description": "`next_page_token` of the previous page.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "A page of batches.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBatchList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_query`.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/batches/{batch}": {
+      "get": {
+        "operationId": "getAdminBatch",
+        "summary": "Read a batch",
+        "description": "Permission `usage_read`. With each provider job's mode, price source and line outcomes, and the cost so far per currency.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "batch",
+            "in": "path",
+            "required": true,
+            "description": "Batch id, `batch_<uuid>`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^batch_"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "The batch.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBatchDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the organization's batch.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/batches/{batch}/cancel": {
+      "post": {
+        "operationId": "cancelAdminBatch",
+        "summary": "Cancel a batch",
+        "description": "Permission `service_account_mutate`. Audited as `batch.cancelled`. As the service account's own cancel: lines not yet run end at no charge; lines already with the provider settle as it reports them. A batch already ending is returned as it is.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "batch",
+            "in": "path",
+            "required": true,
+            "description": "Batch id, `batch_<uuid>`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^batch_"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "Cancelling, or as it is.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBatchDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "404": {
+            "description": "Not the organization's batch.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`idempotency_conflict` or `idempotency_in_progress`.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/batches/{batch}/output": {
+      "get": {
+        "operationId": "getAdminBatchOutput",
+        "summary": "Download a batch's output",
+        "description": "Permission `trace_content_read`: results carry the model's answers. JSONL, one line per request line, in the inference API's output (or error) file format.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "batch",
+            "in": "path",
+            "required": true,
+            "description": "Batch id, `batch_<uuid>`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^batch_"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "The file.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/jsonl": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`, or `batch_results_unavailable` while not written or after purge.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/batches/{batch}/errors": {
+      "get": {
+        "operationId": "getAdminBatchErrors",
+        "summary": "Download a batch's errors",
+        "description": "Permission `trace_content_read`: results carry the model's answers. JSONL, one line per request line, in the inference API's output (or error) file format.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "batch",
+            "in": "path",
+            "required": true,
+            "description": "Batch id, `batch_<uuid>`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^batch_"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "200": {
+            "description": "The file.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/jsonl": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`, or `batch_results_unavailable` while not written or after purge.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_\u2026",
+        "description": "An agent token (`Authorization: Bearer gwa_\u2026`), for automation: it acts as its agent, only in the agent's organization, with the agent's role. Created with `POST /api/admin/v1/organizations/{org}/agents/{agent_id}/tokens` or, on the server, `gateway agent create`."
+      }
+    },
+    "responses": {
+      "Forbidden": {
+        "description": "`forbidden`: the actor lacks the required permission for the organization.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "PreconditionRequired": {
+        "description": "`if_match_required`: the `If-Match` header is missing.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "`authentication_required`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "`service_unavailable` or `authentication_unavailable`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "WriteBadRequest": {
+        "description": "`idempotency_key_required`, `idempotency_key_invalid`, `if_match_invalid`, or a malformed JSON body (`request_body_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "BatchSettingsInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "emulated_allowed"
+        ],
+        "properties": {
+          "emulated_allowed": {
+            "type": "boolean",
+            "description": "Whether lines no native batch job can take (a family without a batch API, a model without a batch route, a group below the provider's smallest job, a connection without staging) run one by one as ordinary requests at the on-demand price. Off, such lines refuse the batch at create."
+          },
+          "emulated_concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 4,
+            "description": "Lines of one emulated job in flight at once, always within the organization's rate limits."
+          }
+        }
+      },
+      "BatchSettings": {
+        "type": "object",
+        "required": [
+          "emulated_allowed",
+          "emulated_concurrency",
+          "version"
+        ],
+        "properties": {
+          "emulated_allowed": {
+            "type": "boolean"
+          },
+          "emulated_concurrency": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "integer",
+            "description": "0 while never set."
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "BatchStagingInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bucket"
+        ],
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "A bucket in the tenant's own cloud, read and written with the connection's own credentials."
+          },
+          "prefix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Object names start with it: empty, or ending in `/`."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The bucket's region. S3 (Bedrock) only, and required there."
+          },
+          "role_arn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The service role Bedrock's batch job assumes to read the input and write the output. S3 only, and required there."
+          }
+        }
+      },
+      "BatchStaging": {
+        "type": "object",
+        "required": [
+          "connection",
+          "kind",
+          "bucket",
+          "prefix",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "connection": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Open string: `s3` (Bedrock) or `gcs` (Gemini on Agent Platform)."
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role_arn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BatchStagingList": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchStaging"
+            }
+          }
+        }
+      },
+      "AdminBatch": {
+        "type": "object",
+        "description": "The inference API's batch object (every field it has), with the service account and team that made it.",
+        "required": [
+          "id",
+          "object",
+          "status",
+          "created_at",
+          "request_counts",
+          "service_account_id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^batch_"
+          },
+          "object": {
+            "const": "batch"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "Open string: `validating`, `in_progress`, `finalizing`, `completed`, `failed`, `expired`, `cancelling`, `cancelled`."
+          },
+          "input_file_id": {
+            "type": "string"
+          },
+          "output_file_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_file_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": "integer"
+          },
+          "request_counts": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "completed": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "service_account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "team_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "AdminBatchDetail": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "status",
+          "gateway"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^batch_"
+          },
+          "object": {
+            "const": "batch"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "Open string: `validating`, `in_progress`, `finalizing`, `completed`, `failed`, `expired`, `cancelling`, `cancelled`."
+          },
+          "input_file_id": {
+            "type": "string"
+          },
+          "output_file_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_file_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": "integer"
+          },
+          "request_counts": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "completed": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "service_account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "team_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "gateway": {
+            "type": "object",
+            "required": [
+              "jobs",
+              "cost"
+            ],
+            "properties": {
+              "jobs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "description": "Open string: `native` or `emulated`."
+                    },
+                    "price_source": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Open string: `batch` or `on_demand`."
+                    },
+                    "provider_family": {
+                      "type": "string"
+                    },
+                    "deployment": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "provider_status": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "provider_batch_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The provider's own job id (a Bedrock job ARN, an Agent Platform job name), in the tenant's own account."
+                    },
+                    "error_code": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "request_counts": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer"
+                        },
+                        "completed": {
+                          "type": "integer"
+                        },
+                        "failed": {
+                          "type": "integer"
+                        },
+                        "pending": {
+                          "type": "integer"
+                        },
+                        "unknown": {
+                          "type": "integer",
+                          "description": "Lines whose usage is not known: settled through reconciliation."
+                        }
+                      }
+                    },
+                    "submitted_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "finished_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    }
+                  }
+                }
+              },
+              "cost": {
+                "type": "array",
+                "description": "One entry per currency; never summed across currencies.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "currency",
+                    "consumed_minor",
+                    "reserved_minor"
+                  ],
+                  "properties": {
+                    "currency": {
+                      "type": "string"
+                    },
+                    "consumed_minor": {
+                      "type": "integer"
+                    },
+                    "reserved_minor": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "AdminBatchList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminBatch"
+            }
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass as `page_token` for the next page; null on the last."
+          }
+        }
+      }
+    }
+  }
+}

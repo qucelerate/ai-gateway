@@ -1,0 +1,11 @@
+# The docs secret scan (public-docs-ci.yml): gitleaks' default rules, less
+# the example request headers that look like keys but are not secrets.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Example Idempotency-Key headers: random UUIDs, not credentials"
+# The whole line must be the header alone (and its continuation), so a
+# credential sharing the line is still reported.
+regexTarget = "line"
+regexes = ['''^\s*-H "Idempotency-Key: [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"( \\)?$''']

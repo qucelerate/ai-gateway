@@ -1,0 +1,1378 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin rate limits API",
+    "version": "1.0.0",
+    "description": "Request, token and concurrency limits for inference, per organization, team, service account and API key, the levels budgets have. Authenticated with a session cookie or an agent token (`Authorization: Bearer gwa_\u2026`), which acts only in its agent's organization. Every limit covering a request applies: the organization's, the team's of the key's team, the service account's, and the key's own. A limit counts reservations, so a request counts toward `requests_per_minute` when admitted (in a sliding 60-second window) and toward `max_concurrent` until it finishes or the expiry worker closes its expired reservation (within its time-to-live plus the worker's interval). Toward `tokens_per_minute` (in the same window) a request counts the most it may use (its input bound plus its output cap) while it runs, then the tokens its provider reported once it is settled, or none if it was released without usage; a request only a smaller output cap fits is admitted with that cap, and one whose input bound and reasoning allowance, with one output token, are more than the limit is refused with no retry that would help (`Retry-After: 60`). A failover attempt counts in the second of the request it continues. Batches count one admission each toward `requests_per_minute`. Creating a batch is refused while single requests in flight are at `max_concurrent` or a token window is used up, but an open batch does not count toward `max_concurrent` (so it does not cap open batches), and batches count no tokens. The window counts whole seconds, so it may count up to one second more than the last 60. Idempotent replays of an inference request are never limited. A request over a limit is rejected before anything is reserved with 429 `rate_limit_exceeded` (requests or tokens per minute) or `concurrency_limit_exceeded` and `Retry-After` in whole seconds; the problem's `scope` and `limit` name the level and the limit reached."
+  },
+  "security": [
+    {
+      "session": []
+    },
+    {
+      "agentToken": []
+    }
+  ],
+  "paths": {
+    "/api/admin/v1/organizations/{org}/rate-limits": {
+      "get": {
+        "operationId": "listRateLimitPolicies",
+        "summary": "Rate-limit policies",
+        "description": "Permission `rate_limit_read` (owner, admin, operator, auditor, read-only member; org-wide only). Not audited. Every policy of the organization, ordered by id.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "description": "Opaque signed token from `next_page_token`; bound to the actor, organization, and ordering.",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of policies.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitPolicyPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/rate-limits/organization": {
+      "put": {
+        "operationId": "setOrganizationRateLimit",
+        "summary": "Set the organization's limits",
+        "description": "Permission `rate_limit_write` (owner, admin; org-wide only). Audited as `rate_limit_policy.set`. Creates or replaces the policy of the organization, which covers every request of the organization; a limit left out is removed.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the policy's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RateLimitInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitPolicy"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Replaced, or an idempotent replay of the recorded response.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "415": {
+            "description": "`request_body_invalid`: body is not `application/json`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_rate_limit`: no limit is set, `requests_per_minute` or `max_concurrent` is outside 1..1000000, or `tokens_per_minute` is outside 1..1000000000; `request_body_unprocessable`: unknown field or wrong type.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteOrganizationRateLimit",
+        "summary": "Remove the organization's limits",
+        "description": "Permission `rate_limit_write` (owner, admin; org-wide only). Audited as `rate_limit_policy.deleted`. Removes the policy of the organization. Its version history continues if the policy is set again.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the policy's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay of a deletion.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "deleted"
+                  ],
+                  "properties": {
+                    "deleted": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/rate-limits/teams/{team_id}": {
+      "put": {
+        "operationId": "setTeamRateLimit",
+        "summary": "Set a team's limits",
+        "description": "Permission `rate_limit_write` (owner, admin; org-wide only). Audited as `rate_limit_policy.set`. Creates or replaces the policy of a team, which covers requests with keys of the team's service accounts; a limit left out is removed.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "description": "Team id in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the policy's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RateLimitInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitPolicy"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Replaced, or an idempotent replay of the recorded response.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "415": {
+            "description": "`request_body_invalid`: body is not `application/json`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_rate_limit`: no limit is set, `requests_per_minute` or `max_concurrent` is outside 1..1000000, or `tokens_per_minute` is outside 1..1000000000; `request_body_unprocessable`: unknown field or wrong type.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTeamRateLimit",
+        "summary": "Remove a team's limits",
+        "description": "Permission `rate_limit_write` (owner, admin; org-wide only). Audited as `rate_limit_policy.deleted`. Removes the policy of a team. Its version history continues if the policy is set again.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "description": "Team id in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the policy's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay of a deletion.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "deleted"
+                  ],
+                  "properties": {
+                    "deleted": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/rate-limits/service-accounts/{service_account_id}": {
+      "put": {
+        "operationId": "setServiceAccountRateLimit",
+        "summary": "Set a service account's limits",
+        "description": "Permission `rate_limit_write` (owner, admin; org-wide only). Audited as `rate_limit_policy.set`. Creates or replaces the policy of a service account, which covers requests with any of its keys; a limit left out is removed.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "Service account id in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the policy's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RateLimitInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitPolicy"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Replaced, or an idempotent replay of the recorded response.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "415": {
+            "description": "`request_body_invalid`: body is not `application/json`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_rate_limit`: no limit is set, `requests_per_minute` or `max_concurrent` is outside 1..1000000, or `tokens_per_minute` is outside 1..1000000000; `request_body_unprocessable`: unknown field or wrong type.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteServiceAccountRateLimit",
+        "summary": "Remove a service account's limits",
+        "description": "Permission `rate_limit_write` (owner, admin; org-wide only). Audited as `rate_limit_policy.deleted`. Removes the policy of a service account. Its version history continues if the policy is set again.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "path",
+            "required": true,
+            "description": "Service account id in the organization.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the policy's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay of a deletion.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "deleted"
+                  ],
+                  "properties": {
+                    "deleted": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/rate-limits/api-keys/{api_key_id}": {
+      "put": {
+        "operationId": "setApiKeyRateLimit",
+        "summary": "Set an API key's limits",
+        "description": "Permission `rate_limit_write` (owner, admin; org-wide only). Audited as `rate_limit_policy.set`. Creates or replaces the policy of one API key, which covers that key's requests alongside its service account's, team's and organization's policies; a limit left out is removed.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "api_key_id",
+            "in": "path",
+            "required": true,
+            "description": "API key id in the organization; a revoked key keeps its policy, which can still be read, changed and removed.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the policy's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RateLimitInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitPolicy"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Replaced, or an idempotent replay of the recorded response.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "415": {
+            "description": "`request_body_invalid`: body is not `application/json`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_rate_limit`: no limit is set, `requests_per_minute` or `max_concurrent` is outside 1..1000000, or `tokens_per_minute` is outside 1..1000000000; `request_body_unprocessable`: unknown field or wrong type.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteApiKeyRateLimit",
+        "summary": "Remove an API key's limits",
+        "description": "Permission `rate_limit_write` (owner, admin; org-wide only). Audited as `rate_limit_policy.deleted`. Removes the policy of an API key. Its version history continues if the policy is set again.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "api_key_id",
+            "in": "path",
+            "required": true,
+            "description": "API key id in the organization; a revoked key keeps its policy, which can still be read, changed and removed.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the policy's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay of a deletion.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "deleted"
+                  ],
+                  "properties": {
+                    "deleted": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_\u2026",
+        "description": "An agent token (`Authorization: Bearer gwa_\u2026`), for automation: it acts as its agent, only in the agent's organization, with the agent's role. Created with `POST /api/admin/v1/organizations/{org}/agents/{agent_id}/tokens` or, on the server, `gateway agent create`."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid query (`invalid_query`) or page token (`invalid_page_token`, `invalid_page_token_signature`, `page_token_scope_mismatch`, `page_token_query_mismatch`, `page_token_too_large`, `pagination_limit_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "`authentication_required`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "`forbidden`: the actor lacks the required permission for the organization.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "`service_unavailable` or `authentication_unavailable`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "`version_conflict` (stale `If-Match`), `idempotency_conflict`, or `idempotency_in_progress`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "PreconditionRequired": {
+        "description": "`if_match_required`: the `If-Match` header is missing.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "WriteBadRequest": {
+        "description": "`idempotency_key_required`, `idempotency_key_invalid`, `if_match_invalid`, or a malformed JSON body (`request_body_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "`not_found`: the team, service account, or policy does not exist in the organization.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "Limit": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 1000000
+      },
+      "RateLimitInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "At least one limit is required.",
+        "properties": {
+          "requests_per_minute": {
+            "$ref": "#/components/schemas/Limit",
+            "description": "Requests admitted in any 60-second window."
+          },
+          "tokens_per_minute": {
+            "$ref": "#/components/schemas/TokenLimit",
+            "description": "Tokens in any 60-second window: a request's input bound plus output cap while it runs, then the tokens it reported."
+          },
+          "max_concurrent": {
+            "$ref": "#/components/schemas/Limit",
+            "description": "Requests in flight at once."
+          }
+        }
+      },
+      "RateLimitPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "scope",
+          "team_id",
+          "service_account_id",
+          "api_key_id",
+          "requests_per_minute",
+          "tokens_per_minute",
+          "max_concurrent",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "organization",
+              "team",
+              "service-account",
+              "api-key"
+            ]
+          },
+          "team_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "service_account_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "api_key_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Set for an `api-key` policy."
+          },
+          "requests_per_minute": {
+            "$ref": "#/components/schemas/Limit"
+          },
+          "tokens_per_minute": {
+            "$ref": "#/components/schemas/TokenLimit"
+          },
+          "max_concurrent": {
+            "$ref": "#/components/schemas/Limit"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RateLimitPolicyPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "next_page_token"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RateLimitPolicy"
+            }
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TokenLimit": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 1000000000
+      }
+    }
+  }
+}

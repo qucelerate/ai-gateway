@@ -1,0 +1,97 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "anthropic/claude-sonnet-4-6",
+  "name": "Claude Sonnet 4.6",
+  "vendor": "Anthropic",
+  "matches": {
+    "azure-ai-foundry": [
+      "claude-sonnet-4-6"
+    ],
+    "anthropic": [
+      "claude-sonnet-4-6"
+    ],
+    "bedrock": [
+      "anthropic.claude-sonnet-4-6",
+      "us.anthropic.claude-sonnet-4-6",
+      "eu.anthropic.claude-sonnet-4-6",
+      "au.anthropic.claude-sonnet-4-6",
+      "jp.anthropic.claude-sonnet-4-6",
+      "global.anthropic.claude-sonnet-4-6"
+    ],
+    "gemini": [
+      "anthropic/claude-sonnet-4-6"
+    ]
+  },
+  "overview": {
+    "release_date": {
+      "value": "2026-02-17",
+      "source_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "family": {
+      "value": "Claude Sonnet",
+      "source_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_in": {
+      "value": [
+        "text",
+        "image"
+      ],
+      "source_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_out": {
+      "value": [
+        "text"
+      ],
+      "source_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "context_window_tokens": {
+      "value": 1000000,
+      "source_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "max_output_tokens": {
+      "value": 128000,
+      "source_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "knowledge_cutoff": {
+      "value": "Aug 2025",
+      "source_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "retirement": {
+      "value": "Not sooner than February 17, 2027",
+      "source_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    }
+  },
+  "evaluations": [],
+  "safety": {
+    "model_card_url": {
+      "value": "https://www.anthropic.com/claude-sonnet-4-6-system-card",
+      "source_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "System card: Claude Sonnet 4.6"
+    },
+    "acceptable_use_url": {
+      "value": "https://www.anthropic.com/legal/aup",
+      "source_url": "https://www.anthropic.com/legal/aup",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "Anthropic Usage Policy"
+    }
+  }
+}

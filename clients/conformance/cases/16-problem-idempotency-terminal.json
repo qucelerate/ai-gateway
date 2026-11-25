@@ -1,0 +1,61 @@
+{
+  "name": "problem_idempotency_terminal",
+  "description": "A spent key is not retried: retrying cannot return the earlier answer.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "idempotency_key": "spent-key"
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key",
+      "idempotency-key": "spent-key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "responses": [
+    {
+      "status": 409,
+      "headers": {
+        "x-request-id": "req-409"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/idempotency_terminal",
+        "code": "idempotency_terminal",
+        "title": "error",
+        "status": 409,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-409"
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "error": {
+      "kind": "problem",
+      "status": 409,
+      "code": "idempotency_terminal",
+      "request_id": "req-409"
+    }
+  }
+}

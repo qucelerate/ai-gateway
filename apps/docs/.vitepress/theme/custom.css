@@ -1,0 +1,107 @@
+:root {
+  --vp-font-family-base: ui-rounded, "Avenir Next", "Segoe UI", sans-serif;
+  --vp-font-family-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", monospace;
+  --vp-c-brand-1: #963411;
+  --vp-c-brand-2: #74270d;
+  --vp-c-brand-3: #b9481c;
+  --vp-c-brand-soft: rgba(150, 52, 17, 0.14);
+  --vp-c-bg: #f8f6f1;
+  --vp-c-bg-alt: #eeece6;
+  --vp-c-text-1: #1d2725;
+  --vp-c-text-2: #4b5652;
+  --vp-c-divider: #c9cbc4;
+  /* Code-block language labels: the default (text-3) is under 4.5:1 here. */
+  --vp-code-lang-color: var(--vp-c-text-2);
+}
+
+.dark {
+  --vp-c-brand-1: #ffb18d;
+  --vp-c-brand-2: #ffc5a8;
+  --vp-c-brand-3: #ffd3bd;
+  --vp-c-brand-soft: rgba(255, 177, 141, 0.16);
+  --vp-c-bg: #17201f;
+  --vp-c-bg-alt: #202b29;
+  --vp-c-text-1: #f3f0e8;
+  --vp-c-text-2: #c9d0cb;
+  --vp-c-divider: #46524e;
+}
+
+body {
+  background-image: radial-gradient(circle at 85% 5%, rgba(150, 52, 17, 0.08), transparent 28rem);
+}
+
+.VPNavBarTitle .title {
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-size: 0.86rem;
+}
+
+.VPHomeHero .name {
+  letter-spacing: -0.05em;
+}
+
+.VPHomeHero .tagline {
+  max-width: 35rem;
+}
+
+.vp-doc h2 {
+  letter-spacing: -0.025em;
+}
+
+.vp-doc a {
+  text-underline-offset: 0.18em;
+}
+
+.vp-doc :not(pre) > code {
+  color: var(--vp-c-brand-2);
+  background-color: var(--vp-c-bg-alt);
+}
+
+.dark .vp-doc :not(pre) > code {
+  color: #ffd3bd;
+}
+
+.VPButton.brand {
+  color: #fff;
+  background-color: #963411;
+}
+
+.dark .VPButton.brand {
+  color: #17201f;
+  background-color: #ffb18d;
+}
+
+:where(a, button, [role="button"], input, select, textarea):focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px #17201f;
+}
+
+.dark :where(a, button, [role="button"], input, select, textarea):focus-visible {
+  outline-color: #17201f;
+  box-shadow: 0 0 0 5px #fff;
+}
+
+/* Code comments: github-light-high-contrast's grey (#66707B) is under
+   4.5:1 on --vp-c-bg-alt; the theme's own secondary text colour is not. */
+.vp-doc span[style*="--shiki-light:#66707B"] {
+  --shiki-light: #4b5652 !important;
+}
+
+/* Inline SVG diagrams (architecture pages) draw in currentColor. */
+.vp-doc figure.diagram {
+  margin: 24px 0;
+  color: var(--vp-c-text-1);
+}
+
+.vp-doc figure.diagram figcaption {
+  margin-top: 8px;
+  color: var(--vp-c-text-2);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 639px) {
+  .VPHomeHero .name {
+    letter-spacing: -0.035em;
+  }
+}

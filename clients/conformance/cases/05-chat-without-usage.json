@@ -1,0 +1,67 @@
+{
+  "name": "chat_without_usage",
+  "description": "usage is optional in a chat response.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {},
+      "json": {
+        "id": "chatcmpl-5",
+        "model": "chat-default",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Hi.",
+              "name": null,
+              "tool_call_id": null
+            },
+            "finish_reason": "stop",
+            "tool_calls": [],
+            "refusal": null,
+            "safety": [],
+            "annotations": []
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "result": {
+      "id": "chatcmpl-5",
+      "usage": null
+    }
+  }
+}

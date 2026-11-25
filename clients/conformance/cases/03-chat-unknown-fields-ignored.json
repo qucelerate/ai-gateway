@@ -1,0 +1,93 @@
+{
+  "name": "chat_unknown_fields_ignored",
+  "description": "Response fields a client does not know, at every level, are ignored rather than rejected (compatibility policy).",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-chat-3"
+      },
+      "json": {
+        "id": "chatcmpl-3",
+        "model": "chat-default",
+        "system_fingerprint": "future",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Hi.",
+              "name": null,
+              "tool_call_id": null
+            },
+            "finish_reason": "some_future_reason",
+            "tool_calls": [],
+            "refusal": null,
+            "safety": [],
+            "annotations": [],
+            "logprobs": {
+              "future": true
+            }
+          }
+        ],
+        "usage": {
+          "input_tokens": 9,
+          "output_tokens": 2,
+          "cached_input_tokens": 0,
+          "reasoning_tokens": 0,
+          "other_tokens": null,
+          "quality": "exact",
+          "completeness": "complete",
+          "audio_tokens": 3
+        }
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "result": {
+      "id": "chatcmpl-3",
+      "choices": [
+        {
+          "message": {
+            "content": "Hi."
+          },
+          "finish_reason": "some_future_reason"
+        }
+      ],
+      "usage": {
+        "quality": "exact"
+      }
+    }
+  }
+}

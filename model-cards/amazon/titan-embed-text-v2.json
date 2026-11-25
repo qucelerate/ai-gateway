@@ -1,0 +1,36 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "amazon/titan-embed-text-v2",
+  "name": "Amazon Titan Text Embeddings V2",
+  "vendor": "Amazon",
+  "modality": "embeddings",
+  "matches": {
+    "bedrock": [
+      "amazon.titan-embed-text-v2:0"
+    ]
+  },
+  "overview": {
+    "release_date": {
+      "value": "2024-04-30",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-text-embeddings-v2.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "retirement": {
+      "value": "EOL no sooner than Apr 30, 2025",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-text-embeddings-v2.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    }
+  },
+  "evaluations": [],
+  "safety": {
+    "model_card_url": {
+      "value": "https://docs.aws.amazon.com/ai/responsible-ai/titan-text-embeddings/overview.html",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-text-embeddings-v2.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "AWS AI Service Card: Amazon Titan Text Embeddings"
+    }
+  }
+}

@@ -1,0 +1,272 @@
+name: Public docs CI
+
+on:
+  push:
+    # main only: a pull request runs this for its branch. A release tag
+    # (path filters do not apply to tags) publishes its docs image.
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "apps/docs/**"
+      - "docker/docs/**"
+      - "openapi/inference-v1.json"
+      - "openapi/inference-v1.source.json"
+      - "openapi/fixtures/sse/**"
+      - ".github/workflows/public-docs-ci.yml"
+  # By hand, on main or a release tag: when GitHub loses a push's runs
+  # (an incident can leave them queued for good), run each again here.
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/docs/**"
+      - "docker/docs/**"
+      - "openapi/inference-v1.json"
+      - "openapi/inference-v1.source.json"
+      - "openapi/fixtures/sse/**"
+      - ".github/workflows/public-docs-ci.yml"
+
+permissions:
+  contents: read
+
+# A newer push cancels a branch's runs, but not main's: each main commit
+# publishes its own image.
+concurrency:
+  group: public-docs-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    working-directory: apps/docs
+
+jobs:
+  build-and-check-links:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Each page's "Last updated" date is its last commit's.
+          fetch-depth: 0
+
+      - name: Verify published OpenAPI is in sync
+        run: |
+          if ! cmp -s public/openapi/inference-v1.json ../../openapi/inference-v1.json; then
+            echo "::error::public/openapi/inference-v1.json differs from ../../openapi/inference-v1.json"
+            exit 1
+          fi
+
+      # The documentation release gate: no secrets, valid
+      # schemas, examples and version links that match the contract, and
+      # WCAG 2.2 AA, besides the links below.
+      - name: Scan for secrets
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" dir . --config .gitleaks.toml --no-banner --redact
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: apps/docs/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check schemas, examples and version links
+        run: npm run check:contract
+
+      - name: Test the build scripts
+        run: npm test
+
+      - name: Build documentation
+        run: npm run build
+
+      # The release pipeline must give the same site for the same commit
+      # (plan §9): a second build is compared with the first.
+      - name: Check the build is reproducible
+        run: |
+          cp -r .vitepress/dist "$RUNNER_TEMP/first"
+          npm run build
+          diff -r "$RUNNER_TEMP/first" .vitepress/dist
+          rm -rf "$RUNNER_TEMP/first"
+
+      # The preview build: a reviewer downloads it from the run and serves
+      # it (`npx serve`, or the docs image) to read the change as built.
+      - name: Upload the preview build
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docs-preview-${{ github.event.pull_request.number }}
+          path: apps/docs/.vitepress/dist/
+          retention-days: 14
+
+      - name: Check accessibility
+        run: |
+          npx playwright install --with-deps chromium
+          npm run check:a11y
+
+      # The image publish would push, with its nginx rules and headers.
+      - name: Build and smoke-test the docs image
+        env:
+          TAG: gateway-docs:ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker build -q -f ../../docker/docs/Dockerfile \
+            --build-context site=.vitepress/dist -t "$TAG" ../../docker/docs
+          cid=$(docker run -d -p 127.0.0.1::8080 "$TAG")
+          # rm -f returns once the container is gone, so the image is free.
+          trap 'docker rm -f "$cid" >/dev/null; docker rmi "$TAG" >/dev/null' EXIT
+          port=$(docker port "$cid" 8080/tcp | head -n1 | sed 's/.*://')
+          for _ in $(seq 1 30); do
+            curl -fs -o /dev/null "http://127.0.0.1:${port}/" && break
+            sleep 1
+          done
+          node scripts/check-served.mjs "http://127.0.0.1:${port}"
+
+      # vite is overridden past the version vitepress declares (see
+      # package.json); check the dev server still boots and transforms.
+      - name: Smoke-test the dev server
+        run: |
+          npm run dev -- --port 5173 --strictPort > dev.log 2>&1 &
+          dev=$!
+          trap 'kill $dev' EXIT
+          for _ in $(seq 1 60); do
+            curl -fs -o /dev/null http://localhost:5173/ && break
+            sleep 1
+          done
+          curl -fsS http://localhost:5173/guide/ | grep -q '/@vite/client' \
+            || { cat dev.log; exit 1; }
+          curl -fsS -o /dev/null http://localhost:5173/@vite/client \
+            || { cat dev.log; exit 1; }
+          curl -fsS -o /dev/null "http://localhost:5173/guide/index.md" \
+            || { cat dev.log; exit 1; }
+
+      - name: Check Markdown links
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
+        with:
+          fail: true
+          args: >-
+            --verbose
+            --no-progress
+            --root-dir apps/docs
+            --exclude-path apps/docs/node_modules
+            "apps/docs/**/*.md"
+
+  # The docs image, published to GHCR: tagged with the 12-character commit
+  # SHA (immutable; the chart pins it, and an earlier one is the rollback),
+  # plus `dev` on main and the version on a release tag. Built again here,
+  # after the checks above pass, on a fresh GitHub runner: the persistent
+  # one runs pull requests' own code, so nothing it built is published.
+  publish:
+    needs: build-and-check-links
+    # Dev docs image: the development repository only; docs-pages.yml and
+    # release-images.yml publish in the public one.
+    if: github.repository == 'qucelerate/gateway' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # One publish per commit at a time: a main push and a release tag on
+    # the same commit share the pinned tag, so the second waits, finds it
+    # published, and only adds its alias.
+    concurrency:
+      group: gateway-docs-publish-${{ github.sha }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: apps/docs/package-lock.json
+
+      - name: Build documentation
+        run: |
+          npm ci
+          npm run build
+
+      - name: Image
+        id: image
+        working-directory: .
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/gateway-docs
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          image=${IMAGE,,}
+          {
+            echo "pinned=${image}:${SHA:0:12}"
+            case "$REF" in
+              refs/heads/main) echo "alias=${image}:dev" ;;
+              refs/tags/v*) echo "alias=${image}:${REF#refs/tags/v}" ;;
+            esac
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Sign in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # The SHA tag never changes once pushed: a rerun, or a release tag on a
+      # commit main already published, reuses that image.
+      - name: Already published?
+        id: existing
+        working-directory: .
+        env:
+          PINNED: ${{ steps.image.outputs.pinned }}
+        run: |
+          if docker buildx imagetools inspect "$PINNED" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "${PINNED} exists; reusing it"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        if: steps.existing.outputs.found != 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: docker/docs
+          file: docker/docs/Dockerfile
+          build-contexts: site=apps/docs/.vitepress/dist
+          push: true
+          tags: ${{ steps.image.outputs.pinned }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Tag
+        if: steps.image.outputs.alias != ''
+        working-directory: .
+        env:
+          PINNED: ${{ steps.image.outputs.pinned }}
+          ALIAS: ${{ steps.image.outputs.alias }}
+        run: docker buildx imagetools create --tag "$ALIAS" "$PINNED"
+
+      - name: Digest
+        working-directory: .
+        env:
+          PINNED: ${{ steps.image.outputs.pinned }}
+        run: |
+          digest=$(docker buildx imagetools inspect "$PINNED" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "${PINNED}@${digest}" | tee -a "$GITHUB_STEP_SUMMARY"

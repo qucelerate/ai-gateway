@@ -1,0 +1,628 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin tracing API",
+    "version": "1.0.0",
+    "description": "Opt-in tracing of requests (D-017). Tracing is off until an owner or admin turns it on, for the organization or for chosen teams and service accounts. A traced request keeps what was sent and what came back beside its request record, encrypted and in object storage; the request record itself never carries content. Content is stored by default once tracing is on and kept 30 days unless set otherwise. Every route responds with `Cache-Control: no-store`.\n\nAuthenticated with a session cookie or an agent token (`Authorization: Bearer gwa_…`), which acts only in its agent's organization."
+  },
+  "security": [
+    {
+      "session": []
+    },
+    {
+      "agentToken": []
+    }
+  ],
+  "paths": {
+    "/api/admin/v1/organizations/{org}/trace-policy": {
+      "get": {
+        "operationId": "getTracePolicy",
+        "summary": "Tracing policy",
+        "description": "Permission `tracing_read` (owner, admin, operator, auditor, read-only member; org-wide only). Not audited. An organization that never set a policy gets `mode` `off`, `content` true, `content_retention_days` 30 and `version` 0, with no `ETag`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The policy.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Present once the policy has been set.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracePolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setTracePolicy",
+        "summary": "Set the tracing policy",
+        "description": "Permission `tracing_write` (owner, admin; org-wide only). Audited as `trace_policy.set`. Replaces the whole policy. Each process applies a change within a minute, from the next request it serves; content already stored keeps to the retention period now set. Every listed team and service account must be the organization's.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` for any state, or the policy's current `ETag`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TracePolicyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replaced, or idempotent replay.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracePolicy"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Set for the first time.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracePolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "`version_conflict` (stale `If-Match`), `idempotency_conflict`, or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "`request_body_invalid`: body is not `application/json`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_trace_policy` (`selected` without a team or service account, a selection with another mode, more than 200 of either, a listed team or service account that is not the organization's, or `content_retention_days` outside 1 to 3650) or `request_body_unprocessable` (unknown or mistyped fields).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/traces/{id}/content": {
+      "get": {
+        "operationId": "getTraceContent",
+        "summary": "A traced request's content",
+        "description": "Permission `trace_content_read` (owner, admin; org-wide only). Every read is audited as `trace_content.read` on the trace: `succeeded`, `denied` when the permission is missing, or `failed` when stored content cannot be opened; content that cannot be audited is not returned. A trace of another organization, or none, is 404. A trace without stored content says why in `state`, with what timing it kept.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Trace id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The trace's content, or why it has none.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceContent"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "`not_found`: no such trace in the organization.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`trace_content_unavailable` (the content is recorded as stored but the trace store or keyring cannot give it back now) or `service_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_…",
+        "description": "An agent token (`Authorization: Bearer gwa_…`), for automation: it acts as its agent, only in the agent's organization, with the agent's role. Created with `POST /api/admin/v1/organizations/{org}/agents/{agent_id}/tokens` or, on the server, `gateway agent create`."
+      }
+    },
+    "responses": {
+      "Forbidden": {
+        "description": "`forbidden`: the actor lacks the required permission for the organization.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "PreconditionRequired": {
+        "description": "`if_match_required`: the `If-Match` header is missing.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "`authentication_required`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "`service_unavailable` or `authentication_unavailable`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "WriteBadRequest": {
+        "description": "`idempotency_key_required`, `idempotency_key_invalid`, `if_match_invalid`, or a malformed JSON body (`request_body_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "TracePolicyInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "organization",
+              "selected"
+            ],
+            "description": "`off` traces nothing; `organization` traces every request; `selected` traces requests of the listed teams' service accounts and of the listed service accounts. A request made with an organization-wide key is traced only under `organization`."
+          },
+          "team_ids": {
+            "type": "array",
+            "maxItems": 200,
+            "uniqueItems": false,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Teams whose service accounts' requests are traced; only with `selected`. Repeats are dropped."
+          },
+          "service_account_ids": {
+            "type": "array",
+            "maxItems": 200,
+            "uniqueItems": false,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Service accounts whose requests are traced; only with `selected`. Repeats are dropped."
+          },
+          "content": {
+            "type": "boolean",
+            "description": "Whether a traced request keeps what was sent and what came back (messages, parameters, response content, tool calls, finish reason). Off keeps only timing beside the request record.",
+            "default": true
+          },
+          "content_retention_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3650,
+            "description": "Days stored content is kept after its request. Content never outlives its request record, which the retention policy governs.",
+            "default": 30
+          }
+        }
+      },
+      "TracePolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode",
+          "team_ids",
+          "service_account_ids",
+          "content",
+          "content_retention_days",
+          "version",
+          "updated_at"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "organization",
+              "selected"
+            ],
+            "description": "`off` traces nothing; `organization` traces every request; `selected` traces requests of the listed teams' service accounts and of the listed service accounts. A request made with an organization-wide key is traced only under `organization`."
+          },
+          "team_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Sorted."
+          },
+          "service_account_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Sorted."
+          },
+          "content": {
+            "type": "boolean",
+            "description": "Whether a traced request keeps what was sent and what came back (messages, parameters, response content, tool calls, finish reason). Off keeps only timing beside the request record."
+          },
+          "content_retention_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3650,
+            "description": "Days stored content is kept after its request. Content never outlives its request record, which the retention policy governs."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0 until the policy is first set; then the `ETag` version."
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "TraceContent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "trace_id",
+          "state",
+          "started_at",
+          "provider_started_at",
+          "first_event_at",
+          "finished_at",
+          "expired_at",
+          "request_bytes",
+          "response_bytes",
+          "truncated",
+          "request",
+          "response"
+        ],
+        "properties": {
+          "trace_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "stored",
+              "pending",
+              "off",
+              "unavailable",
+              "failed",
+              "expired",
+              "not_traced"
+            ],
+            "description": "`stored`: request and response below. `pending`: the request is in flight, or finished moments ago and its content is still being recorded; read again shortly. `off`: traced without content. `unavailable`: content was on but no trace store or keyring was configured. `failed`: the content could not be written. `expired`: it passed its retention period. `not_traced`: the request was not traced (tracing did not cover it, or writes were saturated when it finished)."
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the gateway took the request."
+          },
+          "provider_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it called the provider."
+          },
+          "first_event_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The first streamed event; null when not streamed."
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expired_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "request_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Serialized size of the kept request."
+          },
+          "response_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "request",
+              "response"
+            ],
+            "properties": {
+              "request": {
+                "type": "boolean"
+              },
+              "response": {
+                "type": "boolean"
+              }
+            },
+            "description": "A side over `GATEWAY_TRACE_CONTENT_MAX_BYTES` (5 MiB by default) is kept with its text cut in order."
+          },
+          "request": {
+            "description": "Null unless `stored`. Chat: `{messages: [{role, content, name?, tool_call_id?}], temperature?, max_tokens?}`, with `max_tokens` as the client asked. Embeddings: `{input: [string]}`.",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "response": {
+            "description": "Null unless `stored`, or when the provider returned nothing usable. Chat: `{model, choices: [{index, content, refusal?, tool_calls?: [{id?, name?, arguments}], finish_reason?}]}`; a stream as assembled. Embeddings: `{model, embeddings: [{index, dimensions, preview}]}`, `preview` being the vector's first 8 values.",
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

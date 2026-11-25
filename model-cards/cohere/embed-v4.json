@@ -1,0 +1,25 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "cohere/embed-v4",
+  "name": "Cohere Embed v4",
+  "vendor": "Cohere",
+  "modality": "embeddings",
+  "matches": {
+    "bedrock": [
+      "cohere.embed-v4:0",
+      "us.cohere.embed-v4:0",
+      "eu.cohere.embed-v4:0",
+      "global.cohere.embed-v4:0"
+    ]
+  },
+  "overview": {
+    "context_window_tokens": {
+      "value": 128000,
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-embed-v4.html",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "independent"
+    }
+  },
+  "evaluations": [],
+  "safety": {}
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "qucelerate.data-handling.v1",
+  "provider_family": "bedrock",
+  "name": "Amazon Bedrock",
+  "facts": {
+    "training_use": {
+      "value": "Your content is not used to improve the base models.",
+      "source_url": "https://aws.amazon.com/bedrock/faqs/",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "shared_with_model_provider": {
+      "value": "Your content is not shared with any model providers.",
+      "source_url": "https://aws.amazon.com/bedrock/faqs/",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "provider_access": {
+      "value": "Models run in Model Deployment Accounts operated by the Amazon Bedrock service team; model providers have no access to those accounts, their logs, or customer prompts and completions.",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/data-protection.html",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "abuse_monitoring": {
+      "value": "Automated abuse detection, under a zero operator access model; for some models Bedrock stores inputs and outputs for a limited time, as the abuse detection page lists per model.",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/abuse-detection.html",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "encryption": {
+      "value": "Data is encrypted in transit and at rest, optionally with your own keys.",
+      "source_url": "https://aws.amazon.com/bedrock/faqs/",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    }
+  }
+}

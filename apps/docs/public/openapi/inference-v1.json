@@ -1,0 +1,2320 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway Inference API",
+    "version": "1.0.0",
+    "description": "Stable since 1.0.0 (2026-11-06). Within `/api/inference/v1/` the contract changes only compatibly: new endpoints, new optional request fields, new response fields, new SSE event names, and new values of open strings such as `finish_reason` and problem `code`. Clients must ignore response fields and SSE events they do not know. A breaking change ships under a new URL version alongside this one. See the compatibility policy in the reference documentation."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "gatewayApiKey": []
+    }
+  ],
+  "paths": {
+    "/api/inference/v1/chat/completions": {
+      "post": {
+        "operationId": "chatCompletionsV1",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/EndUser"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Bounded chat request",
+                  "value": {
+                    "model": "chat-default",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Hello"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Completed chat response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                },
+                "examples": {
+                  "completed": {
+                    "summary": "Completed response",
+                    "value": {
+                      "id": "request-id",
+                      "model": "chat-default",
+                      "choices": [],
+                      "usage": null
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "502": {
+            "$ref": "#/components/responses/Problem502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem504"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/inference/v1/chat/completions/stream": {
+      "post": {
+        "operationId": "chatCompletionsStreamV1",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/EndUser"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Named, non-resumable SSE events",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                },
+                "examples": {
+                  "completed": {
+                    "value": "event: response.started\ndata: {\"model\":\"chat-default\"}\n\nevent: response.completed\ndata: {\"model\":\"chat-default\",\"usage\":null}\n\n",
+                    "x-fixture": "fixtures/sse/chat-completed.sse"
+                  },
+                  "provider-error": {
+                    "value": "event: error\ndata: {\"code\":\"provider_error\",\"status\":502}\n\n",
+                    "x-fixture": "fixtures/sse/chat-error.sse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "502": {
+            "$ref": "#/components/responses/Problem502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem504"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-sse-events": [
+          {
+            "name": "response.started",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseResponseStarted"
+            }
+          },
+          {
+            "name": "choice.delta",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseChoiceDelta"
+            }
+          },
+          {
+            "name": "tool_call.delta",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseToolCallDelta"
+            }
+          },
+          {
+            "name": "choice.finished",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseChoiceFinished"
+            }
+          },
+          {
+            "name": "safety.annotation",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseSafetyAnnotation"
+            }
+          },
+          {
+            "name": "usage",
+            "terminal": false,
+            "schema": {
+              "$ref": "#/components/schemas/SseUsage"
+            }
+          },
+          {
+            "name": "response.completed",
+            "terminal": true,
+            "schema": {
+              "$ref": "#/components/schemas/SseResponseCompleted"
+            }
+          },
+          {
+            "name": "error",
+            "terminal": true,
+            "schema": {
+              "$ref": "#/components/schemas/SseError"
+            }
+          }
+        ],
+        "x-resumable": false
+      }
+    },
+    "/api/inference/v1/embeddings": {
+      "post": {
+        "operationId": "embeddingsV1",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/EndUser"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Bounded embedding request",
+                  "value": {
+                    "model": "embedding-default",
+                    "input": [
+                      "Hello"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Embedding vectors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingResponse"
+                },
+                "examples": {
+                  "completed": {
+                    "summary": "Completed embeddings",
+                    "value": {
+                      "object": "list",
+                      "model": "embedding-default",
+                      "data": [],
+                      "usage": null
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "502": {
+            "$ref": "#/components/responses/Problem502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem504"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/inference/v1/files": {
+      "post": {
+        "operationId": "uploadFileV1",
+        "summary": "Upload a batch input file",
+        "description": "Stores a JSONL input file for the API key's service account. Needs a key with the inference or embeddings capability, and a configured file store (`batch_store_unavailable` otherwise).",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/FileUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "200": {
+            "description": "The stored file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          }
+        }
+      }
+    },
+    "/api/inference/v1/files/{id}": {
+      "get": {
+        "operationId": "getFileV1",
+        "summary": "A file",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FileId"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "200": {
+            "description": "The file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inference/v1/files/{id}/content": {
+      "get": {
+        "operationId": "getFileContentV1",
+        "summary": "A file's content, as uploaded or written",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FileId"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "200": {
+            "description": "The JSONL content",
+            "content": {
+              "application/jsonl": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inference/v1/batches": {
+      "post": {
+        "operationId": "createBatchV1",
+        "summary": "Create a batch",
+        "description": "Validates the whole input file, routes every line by its alias's `chat_batch` or `embeddings_batch` route, and reserves every line at the batch price, for its whole output cap, until the completion window ends plus six hours, in one transaction. Any refused line (`batch_validation_failed`, listing every line) or a budget that cannot hold every line (`quota_exceeded`) refuses the batch with nothing reserved. The batch is admitted against rate limits once; its lines are not counted as requests or concurrent requests. A repeated `Idempotency-Key` returns the batch it created.",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/EndUser"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCreateRequest"
+              },
+              "examples": {
+                "chat": {
+                  "summary": "A chat batch",
+                  "value": {
+                    "input_file_id": "file-6f1c2b9e-1d2a-4c55-9a4b-6a1f0d3e2c10",
+                    "endpoint": "/v1/chat/completions",
+                    "completion_window": "24h",
+                    "metadata": {
+                      "run": "nightly"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "200": {
+            "description": "The batch, in progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Batch"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listBatchesV1",
+        "summary": "The service account's batches, newest first",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^batch_"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "200": {
+            "description": "A page of batches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchList"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inference/v1/batches/{id}": {
+      "get": {
+        "operationId": "getBatchV1",
+        "summary": "A batch",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BatchId"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "200": {
+            "description": "The batch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Batch"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inference/v1/batches/{id}/cancel": {
+      "post": {
+        "operationId": "cancelBatchV1",
+        "summary": "Cancel a batch",
+        "description": "The batch becomes `cancelling` and each provider job is cancelled; lines that finish first are still settled and returned. A batch already ending or ended is returned as it is.",
+        "security": [
+          {
+            "gatewayApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BatchId"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "200": {
+            "description": "The batch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Batch"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "gatewayApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gw_ API key"
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "RequestId": {
+        "name": "X-Request-Id",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "FileId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^file-"
+        }
+      },
+      "BatchId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^batch_"
+        }
+      },
+      "EndUser": {
+        "name": "Gateway-End-User",
+        "in": "header",
+        "required": false,
+        "description": "The app's ID for the user this request is for (D-028): 1\u2013256 bytes of UTF-8, no control characters, no leading or trailing whitespace. Send a pseudonymous ID, never an email address. Scoped to the key's service account. Where the service account limits its end users, the request is charged to this user's monthly plan allowance and then their credits, as well as to every other budget; where it requires one, a request without it is 400 `end_user_required`. Takes precedence over the body's `user`.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "headers": {
+      "RequestId": {
+        "description": "Gateway correlation identifier",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "WWW-Authenticate": {
+        "description": "Bearer authentication challenge",
+        "schema": {
+          "type": "string",
+          "const": "Bearer"
+        }
+      },
+      "Retry-After": {
+        "description": "Whole seconds to wait before retrying a request rejected by a rate or concurrency limit, or by an open provider circuit",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        }
+      }
+    },
+    "responses": {
+      "Problem": {
+        "description": "RFC 9457 problem",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        },
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        }
+      },
+      "Problem400": {
+        "description": "Bad Request, including `end_user_required` and `end_user_invalid` (D-028).",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem401": {
+        "description": "Unauthorized",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "WWW-Authenticate": {
+            "$ref": "#/components/headers/WWW-Authenticate"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem403": {
+        "description": "Forbidden, including `end_user_not_registered`: the end user has no plan and the service account no default (D-028); and `routing_policy_denied`: the organization's routing policy permits none of the alias's deployments (D-023).",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem404": {
+        "description": "Not Found",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "examples": {
+              "unknownCatalogAlias": {
+                "summary": "Unknown catalog alias",
+                "value": {
+                  "type": "https://gateway.invalid/problems/model_unavailable",
+                  "code": "model_unavailable",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "model alias is not available for this operation",
+                  "instance": "/api/inference/v1/chat/completions",
+                  "request_id": "request-id"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Problem409": {
+        "description": "Conflict",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem413": {
+        "description": "Payload Too Large",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem415": {
+        "description": "Unsupported Media Type",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem422": {
+        "description": "Unprocessable Entity",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem429": {
+        "description": "Too Many Requests: a quota is exhausted (`quota_exceeded`), or a rate limit (`rate_limit_exceeded`) or concurrency limit (`concurrency_limit_exceeded`) is reached. Limit rejections carry `Retry-After`. A `quota_exceeded` that carries `end_user` is the end user's allowance and credits (D-028); without it, a budget. A rate or concurrency refusal that carries `end_user` is their plan's `requests_per_minute`, `tokens_per_minute` or `max_concurrent` (named by `limit`); without it, a rate-limit policy of the organization, a team, a service account or the API key, its level named by `scope` and its limit by `limit`. A `tokens_per_minute` limit, of a plan or a policy, may also lower a request's output cap to what fits, as a budget does.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem502": {
+        "description": "Bad Gateway",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem503": {
+        "description": "Service Unavailable. The code `provider_circuit_open` means the deployment has failed repeatedly and requests to it are refused without calling the provider; it carries `Retry-After`.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem504": {
+        "description": "Gateway Timeout",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ChatRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          },
+          "user": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "The end user, as OpenAI's `user` field; used where `Gateway-End-User` is not sent (D-028)."
+          },
+          "tools": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "description": "Functions the model may call (D-032). Only a model alias whose every deployment takes tools accepts them; others refuse the request with `tools_unsupported`, never drop them.",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          },
+          "tool_choice": {
+            "$ref": "#/components/schemas/ToolChoice"
+          },
+          "parallel_tool_calls": {
+            "type": "boolean",
+            "description": "`false` asks for at most one call per response. Needs `tools`. Bedrock and Gemini cannot honour `false` and refuse it with `tools_unsupported`."
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role"
+        ],
+        "description": "A conversation message. `content` is required except on an assistant message that carries `tool_calls` (D-032), where it may be null or absent. A `tool` message answers one call of the assistant message just before it, by `tool_call_id`; every call is answered before the next non-tool message, and a conversation with calls or results defines `tools`.",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system",
+              "developer",
+              "user",
+              "assistant",
+              "tool"
+            ]
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 131072
+          },
+          "tool_calls": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "description": "Assistant messages only: the calls the model made, as a response returned them.",
+            "items": {
+              "$ref": "#/components/schemas/ToolCallRequest"
+            }
+          },
+          "tool_call_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "Tool messages only, and required on them: the id of the call this message answers."
+          }
+        }
+      },
+      "ChatResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "model",
+          "choices"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "EmbeddingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "input": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 131072
+            }
+          },
+          "user": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "The end user, as OpenAI's `user` field; used where `Gateway-End-User` is not sent (D-028)."
+          }
+        }
+      },
+      "EmbeddingResponse": {
+        "type": "object",
+        "required": [
+          "object",
+          "model",
+          "data"
+        ],
+        "properties": {
+          "object": {
+            "const": "list"
+          },
+          "model": {
+            "type": "string"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "object",
+                "index",
+                "embedding"
+              ],
+              "properties": {
+                "object": {
+                  "const": "embedding"
+                },
+                "index": {
+                  "type": "integer"
+                },
+                "embedding": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cached_input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "reasoning_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "other_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "estimated",
+              "unknown"
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "unavailable"
+            ]
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "errors": {
+            "type": "object",
+            "description": "Batch creation only (`batch_validation_failed`): every refused line of the input file, by line number.",
+            "required": [
+              "object",
+              "data"
+            ],
+            "properties": {
+              "object": {
+                "const": "list"
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BatchLineError"
+                }
+              }
+            }
+          },
+          "end_user": {
+            "type": "string",
+            "description": "The end user whose own limits refused the request (D-028): with `quota_exceeded`, their allowance and credits cannot cover it; with `rate_limit_exceeded` or `concurrency_limit_exceeded`, their plan's `limit` is reached. Absent when a budget or a rate-limit policy refused it."
+          },
+          "allowance_remaining": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "`quota_exceeded` with `end_user`: this period's allowance left, in money units."
+          },
+          "limit": {
+            "type": "string",
+            "enum": [
+              "requests_per_minute",
+              "tokens_per_minute",
+              "max_concurrent"
+            ],
+            "description": "`rate_limit_exceeded` or `concurrency_limit_exceeded`: which limit is reached, of the end user's plan (with `end_user`) or of the policy at `scope`. `Retry-After` says when the request could fit; a request whose input bound and reasoning allowance, with one output token, are more than a `tokens_per_minute` limit never fits (the detail says so, and `Retry-After` is 60)."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "organization",
+              "team",
+              "service-account",
+              "api-key"
+            ],
+            "description": "`rate_limit_exceeded` or `concurrency_limit_exceeded` without `end_user`: the level of the rate-limit policy whose `limit` is reached. Every policy covering a request applies; the one named is the one whose wait is longest, or one the request can never fit."
+          },
+          "credit_balance": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "`quota_exceeded` with `end_user`: unspent, unreserved credit, in money units. May be above zero and still not cover the request's largest cost."
+          },
+          "currency": {
+            "type": "string",
+            "description": "`quota_exceeded` with `end_user`: the currency of the allowance and credits."
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "required": [
+          "index",
+          "message",
+          "finish_reason",
+          "tool_calls",
+          "refusal",
+          "safety",
+          "annotations"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "message": {
+            "$ref": "#/components/schemas/MessageResponse"
+          },
+          "finish_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "The same calls as `message.tool_calls`, flat (`id`, `name`, `arguments`), as 1.0.0 returned them.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "arguments": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "refusal": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "safety": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "annotations": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool_call_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool_calls": {
+            "type": "array",
+            "description": "The calls the model made (D-032), OpenAI-shaped; absent when it made none. The choice's `finish_reason` is then `tool_calls`.",
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            }
+          }
+        }
+      },
+      "SseResponseStarted": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          }
+        }
+      },
+      "SseChoiceDelta": {
+        "type": "object",
+        "required": [
+          "choice_index",
+          "content_delta",
+          "refusal_delta",
+          "annotations"
+        ],
+        "properties": {
+          "choice_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "content_delta": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refusal_delta": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "annotations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Annotation"
+            }
+          }
+        }
+      },
+      "SseToolCallDelta": {
+        "type": "object",
+        "required": [
+          "choice_index",
+          "tool_call_index",
+          "id",
+          "name",
+          "arguments_delta"
+        ],
+        "properties": {
+          "choice_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tool_call_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arguments_delta": {
+            "type": "string"
+          }
+        }
+      },
+      "SseChoiceFinished": {
+        "type": "object",
+        "required": [
+          "choice_index",
+          "finish_reason"
+        ],
+        "properties": {
+          "choice_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "finish_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "SseSafetyAnnotation": {
+        "type": "object",
+        "required": [
+          "choice_index",
+          "category",
+          "blocked"
+        ],
+        "properties": {
+          "choice_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "category": {
+            "type": "string"
+          },
+          "blocked": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SseUsage": {
+        "$ref": "#/components/schemas/Usage"
+      },
+      "SseResponseCompleted": {
+        "type": "object",
+        "required": [
+          "model",
+          "usage"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Usage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SseError": {
+        "type": "object",
+        "required": [
+          "code",
+          "status"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          }
+        }
+      },
+      "Annotation": {
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "BatchLineError": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "line"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Open string: `invalid_json_line`, `invalid_custom_id`, `duplicate_custom_id`, `invalid_method`, `mismatched_url`, `invalid_body`, a single endpoint's bound code, `model_unavailable`, `insufficient_scope`, `routing_policy_denied`, `accounting_bound_exceeded`, `batch_line_too_large`, `too_many_lines`, `empty_file`, `invalid_file_encoding`, and others later."
+          },
+          "message": {
+            "type": "string"
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "1-based line of the input file; null for the file as a whole."
+          },
+          "param": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "File": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "bytes",
+          "created_at",
+          "filename",
+          "purpose"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^file-"
+          },
+          "object": {
+            "const": "file"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Unix seconds."
+          },
+          "filename": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "`batch` for an input file, `batch_output` for a batch's output or error file."
+          }
+        }
+      },
+      "FileUpload": {
+        "type": "object",
+        "required": [
+          "purpose",
+          "file"
+        ],
+        "properties": {
+          "purpose": {
+            "const": "batch"
+          },
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/jsonl",
+            "description": "JSONL, one request a line: `{custom_id, method: \"POST\", url, body}`, where `url` is the batch's endpoint and `body` is the request that endpoint takes, with `model` a catalog alias. At most 64 MiB and 10,000 lines."
+          }
+        }
+      },
+      "BatchCreateRequest": {
+        "type": "object",
+        "required": [
+          "input_file_id",
+          "endpoint",
+          "completion_window"
+        ],
+        "properties": {
+          "input_file_id": {
+            "type": "string",
+            "pattern": "^file-"
+          },
+          "endpoint": {
+            "enum": [
+              "/v1/chat/completions",
+              "/v1/embeddings"
+            ]
+          },
+          "completion_window": {
+            "const": "24h"
+          },
+          "metadata": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "maxProperties": 16,
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 512
+            }
+          }
+        }
+      },
+      "Batch": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "endpoint",
+          "input_file_id",
+          "completion_window",
+          "status",
+          "created_at",
+          "expires_at",
+          "request_counts",
+          "metadata"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^batch_"
+          },
+          "object": {
+            "const": "batch"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "errors": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "object": {
+                "const": "list"
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BatchLineError"
+                }
+              }
+            }
+          },
+          "input_file_id": {
+            "type": "string"
+          },
+          "completion_window": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "Open string: `validating`, `in_progress`, `finalizing`, `completed`, `failed`, `expired`, `cancelling`, `cancelled`."
+          },
+          "output_file_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_file_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "in_progress_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "expires_at": {
+            "type": "integer"
+          },
+          "finalizing_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "completed_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "failed_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "expired_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cancelling_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cancelled_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "request_counts": {
+            "type": "object",
+            "required": [
+              "total",
+              "completed",
+              "failed"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "completed": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "gateway": {
+            "$ref": "#/components/schemas/BatchGatewayExtension"
+          }
+        }
+      },
+      "BatchList": {
+        "type": "object",
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ],
+        "properties": {
+          "object": {
+            "const": "list"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Batch"
+            }
+          },
+          "first_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BatchGatewayExtension": {
+        "type": "object",
+        "description": "The gateway's own account of a batch (D-021), on the single-batch read only: how each group of lines runs and at which price, and what the batch has cost so far and still holds. Never part of OpenAI's object; clients that ignore unknown fields are unaffected.",
+        "required": [
+          "jobs",
+          "cost"
+        ],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "price_source",
+                "provider_family",
+                "state",
+                "request_counts"
+              ],
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "description": "Open string: `native` (the provider's batch API) or `emulated` (each line sent as an ordinary request)."
+                },
+                "price_source": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Open string: `batch` (the deployment's batch price) or `on_demand` (its ordinary price, for emulated lines)."
+                },
+                "provider_family": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string",
+                  "description": "Open string: `pending`, `submitted`, `finished`."
+                },
+                "provider_status": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "request_counts": {
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "completed",
+                    "failed"
+                  ],
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "completed": {
+                      "type": "integer"
+                    },
+                    "failed": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "cost": {
+            "type": "array",
+            "description": "One entry per currency; amounts in different currencies are never summed.",
+            "items": {
+              "type": "object",
+              "required": [
+                "currency",
+                "consumed_minor",
+                "reserved_minor"
+              ],
+              "properties": {
+                "currency": {
+                  "type": "string"
+                },
+                "consumed_minor": {
+                  "type": "integer",
+                  "description": "Settled so far, in minor units."
+                },
+                "reserved_minor": {
+                  "type": "integer",
+                  "description": "Still held for lines not yet settled, in minor units."
+                }
+              }
+            }
+          }
+        }
+      },
+      "Tool": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "function"
+        ],
+        "description": "A function the model may call (D-032). Its definition counts toward the request's input bound and is billed as input by the provider.",
+        "properties": {
+          "type": {
+            "const": "function"
+          },
+          "function": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+                "description": "Distinct among the request's tools."
+              },
+              "description": {
+                "type": "string"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "A JSON Schema for the arguments, whose `type` is `object`. Defaults to an object with no properties. Passed to the provider as it is; providers accept different subsets of JSON Schema.",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "ToolCall": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "function"
+        ],
+        "description": "A call the model made to one of the request's tools (D-032).",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "Opaque; send it back unchanged as the `tool_call_id` of the result and in the assistant message's `tool_calls`. Some providers' ids carry state the provider needs when the conversation is replayed."
+          },
+          "type": {
+            "const": "function"
+          },
+          "function": {
+            "type": "object",
+            "required": [
+              "name",
+              "arguments"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+              },
+              "arguments": {
+                "type": "string",
+                "description": "The arguments as a JSON object, serialized. Generated by the model: validate them against the tool's schema before acting on them."
+              }
+            }
+          }
+        }
+      },
+      "ToolCallRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "function"
+        ],
+        "description": "A call the model made, sent back in an assistant message's `tool_calls` (D-032); `arguments` must be a JSON object, serialized.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "Opaque; send it back unchanged as the `tool_call_id` of the result and in the assistant message's `tool_calls`. Some providers' ids carry state the provider needs when the conversation is replayed."
+          },
+          "type": {
+            "const": "function"
+          },
+          "function": {
+            "type": "object",
+            "required": [
+              "name",
+              "arguments"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+              },
+              "arguments": {
+                "type": "string",
+                "description": "The arguments as a JSON object, serialized. Generated by the model: validate them against the tool's schema before acting on them."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ToolChoice": {
+        "description": "Whether the model must call tools: `auto` (the model decides; the default), `none` (it calls none), `required` (it calls at least one), or a named function it must call. Needs `tools`. A provider that cannot honour the choice refuses the request with `tools_unsupported` (Bedrock has no `none`).",
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "auto",
+              "none",
+              "required"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "function"
+            ],
+            "properties": {
+              "type": {
+                "const": "function"
+              },
+              "function": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+                    "description": "One of the request's tools."
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

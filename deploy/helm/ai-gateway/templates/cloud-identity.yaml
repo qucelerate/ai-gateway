@@ -1,0 +1,34 @@
+{{- $c := .Values.cloudIdentity -}}
+{{- if $c.serviceAccount.create }}
+# The identity the API and worker run as: what a federated cloud trusts
+# (system:serviceaccount:<namespace>:<name>). No Kubernetes API access.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "gateway.serviceAccountName" . }}
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+{{- end }}
+{{- if $c.google.workloadIdentityProvider }}
+---
+# Google's external_account credentials: the projected token, exchanged at
+# Google STS for the workload identity provider, then for the gateway's
+# service account. No key.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gateway.name" . }}-google-credentials
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+data:
+  credentials.json: |
+    {{- dict
+        "type" "external_account"
+        "audience" $c.google.workloadIdentityProvider
+        "subject_token_type" "urn:ietf:params:oauth:token-type:jwt"
+        "token_url" "https://sts.googleapis.com/v1/token"
+        "service_account_impersonation_url" (printf "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/%s:generateAccessToken" $c.google.serviceAccount)
+        "credential_source" (dict "file" "/var/run/secrets/cloud/google")
+        | toPrettyJson | nindent 4 }}
+{{- end }}

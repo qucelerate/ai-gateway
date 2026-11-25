@@ -1,0 +1,20 @@
+event: response.started
+data: {"model":"chat-default"}
+
+event: choice.delta
+data: {"choice_index":0,"content_delta":"hello","refusal_delta":null,"annotations":[]}
+
+event: usage
+data: {"input_tokens":1,"output_tokens":1,"cached_input_tokens":null,"reasoning_tokens":null,"other_tokens":null,"quality":"exact","completeness":"complete"}
+
+event: tool_call.delta
+data: {"choice_index":0,"tool_call_index":0,"id":null,"name":null,"arguments_delta":""}
+
+event: choice.delta
+data: {"choice_index":0,"content_delta":" world","refusal_delta":null,"annotations":[]}
+
+event: choice.finished
+data: {"choice_index":0,"finish_reason":"stop"}
+
+event: response.completed
+data: {"model":"chat-default","usage":null}

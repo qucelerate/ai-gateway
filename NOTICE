@@ -1,0 +1,45 @@
+QuCelerate AI Gateway
+Copyright (c) 2026 QuCelerate
+
+This product is licensed under the MIT License (see LICENSE). The client
+libraries in clients/ carry their own copies of the same license.
+
+It includes or depends on third-party software and data under their own
+licenses, listed below.
+
+Vendored code and data
+----------------------
+
+clients/c/third_party/yyjson/
+  yyjson 0.13.0, Copyright (c) 2020 YaoYuan. MIT License; the full text is in
+  clients/c/third_party/yyjson/LICENSE. Unmodified copy; provenance and
+  checksum in clients/c/third_party/yyjson/README.md.
+
+src/domain/common_passwords.txt
+  A list of common passwords, taken from the password frequency data of
+  zxcvbn (Copyright (c) 2012-2016 Dan Wheeler and Dropbox, Inc., MIT
+  License, https://github.com/dropbox/zxcvbn). Used only to reject common
+  passwords for local accounts.
+
+model-cards/
+  Facts quoted from model providers, cloud vendors and evaluators, each with
+  its source. That text belongs to its publishers and is not covered by this
+  product's MIT license; see model-cards/README.md, "Licensing of quoted
+  text".
+
+Dependencies
+------------
+
+Rust crates (Cargo.lock): permissive licenses only (MIT, Apache-2.0, BSD,
+ISC, Zlib, Unicode and similar), as deny.toml enforces with cargo-deny. A
+full list with each license text is generated with cargo-about:
+
+  scripts/third-party-notices.sh > THIRD_PARTY_NOTICES.md
+
+JavaScript packages: the admin console (apps/admin) and the documentation
+site (apps/docs) bundle npm packages, including IBM's Carbon Design System
+(Apache-2.0) and React (MIT); their licenses are listed in each app's
+package-lock.json and node_modules after `npm ci`.
+
+Client libraries in clients/ declare their own dependencies in their
+package manifests (Cargo.toml, pyproject.toml, go.mod, pom.xml, CMake).

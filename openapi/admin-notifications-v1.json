@@ -1,0 +1,508 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin notifications API",
+    "version": "1.0.0",
+    "description": "A member's notifications (Phase 10, D-024): what the gateway did, or needs from people, in an organization.\n\nEach notification has a kind, which fixes its severity (`info`, `warning`, `action`), whether it is an event or a condition, and the permission a member needs to see it. A member sees only notifications whose permission their role holds organization-wide, so a member bound only to teams sees none: the price, price source and provider account kinds need `catalog_read`, `budget.threshold` needs `budget_read`, `api_key.expiring` needs `api_keys_list`, `agent_token.expiring` needs `members_list`, `webhook.failing` needs `webhook_read`, and `end_user.credits_low` needs `usage_read`. A condition (every kind but `price.adopted`) stays open until what it reports ends or is acted on, then gets `resolved_at`; it is raised once per subject, and raising it again updates its text. An event (`price.adopted`) is never resolved.\n\nKinds: `price.adopted` (info) published prices were adopted in a new release; `price.held` (action) a published price change was held for an admin; `price_source.failing` (warning) a price source's latest fetch failed, raised in every organization with an active release and resolved when it fetches again; `provider_account.sync_failing` (warning) a provider account's model listing failed, resolved when one succeeds; `budget.threshold` (warning) a budget's current window has used 80% of its limit or more, by settled spend, its text updated once it is used up, and resolved when it is below 80% again (a new window, a raised limit, the budget removed); `api_key.expiring` (warning) an active key of an enabled service account expires within 7 days, resolved when it is revoked, disabled, extended or expires (a rotated key keeps its expiry, so rotation does not); `agent_token.expiring` (warning) an agent token expires within 7 days, resolved likewise; `webhook.failing` (warning) a delivery to an endpoint was parked after its last retry, naming the endpoint by host only, resolved when a delivery to it succeeds or it is disabled or deleted; `end_user.credits_low` (warning) an app's end user has 20% or less left of their live credits (granted, not reversed, not expired), by settled spend, subject the end user's gateway id, text updated once none are left, and resolved when they are above 20% again (a new grant) or their grants expire. Budgets, keys, tokens and credits are checked every five minutes. Each notification newly raised is also sent to webhook endpoints subscribed to `notification.created` (see `openapi/admin-webhooks-v1.json`). New kinds may be added; clients show an unknown kind by its title.\n\nRead state is each member's own. Marking read is not audited, takes neither `Idempotency-Key` nor `If-Match`, and is idempotent. Events, and conditions once resolved, are deleted 90 days later. Every response has `Cache-Control: no-store`; problems are `application/problem+json`."
+  },
+  "security": [
+    {
+      "session": []
+    },
+    {
+      "agentToken": []
+    }
+  ],
+  "paths": {
+    "/api/admin/v1/organizations/{org}/notifications": {
+      "get": {
+        "operationId": "listNotifications",
+        "summary": "The member's notifications, newest first",
+        "description": "Any member of the organization. Not audited. Page tokens are bound to the member, the organization and the filters.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "price.adopted",
+                "price.held",
+                "price_source.failing",
+                "provider_account.sync_failing",
+                "budget.threshold",
+                "api_key.expiring",
+                "agent_token.expiring",
+                "webhook.failing",
+                "end_user.credits_low",
+                "reconciliation.open"
+              ]
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "info",
+                "warning",
+                "action"
+              ]
+            }
+          },
+          {
+            "name": "read",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "unread",
+                "read"
+              ],
+              "default": "all"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request` (an unknown kind, severity or query parameter), `pagination_limit_invalid`, or a page token problem (`invalid_page_token`, `invalid_page_token_signature`, `page_token_scope_mismatch`, `page_token_query_mismatch`, `page_token_too_large`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/notifications/unread-count": {
+      "get": {
+        "operationId": "countUnreadNotifications",
+        "summary": "Unread, unresolved notifications",
+        "description": "Any member of the organization. Counts the notifications the member may see that they have not read and that are not resolved.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The count.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadCount"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/notifications/read": {
+      "post": {
+        "operationId": "markNotificationsRead",
+        "summary": "Mark notifications read",
+        "description": "Any member of the organization; changes only their own read state. `through` marks read every notification the member may see created up to and including it; `ids` marks chosen ones (ids the member may not see are skipped).",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkRead"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Marked; the unread count after.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadCount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request`: the body is not valid JSON or has unknown fields.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: `through` names no notification the member may see.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_request`: neither or both of `through` and `ids`, or `ids` empty or over 100.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_…",
+        "description": "An agent token (`Authorization: Bearer gwa_…`), for automation: it acts as its agent, only in the agent's organization, with the agent's role. Created with `POST /api/admin/v1/organizations/{org}/agents/{agent_id}/tokens` or, on the server, `gateway agent create`."
+      }
+    },
+    "responses": {
+      "Forbidden": {
+        "description": "`forbidden`: the actor lacks the required permission for the organization.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "`authentication_required`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "`service_unavailable` or `authentication_unavailable`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "Notification": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "severity",
+          "subject",
+          "title",
+          "body",
+          "link",
+          "data",
+          "created_at",
+          "updated_at",
+          "resolved_at",
+          "read"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "description": "One of the kinds above; new ones may be added.",
+            "examples": [
+              "price.adopted",
+              "price.held",
+              "price_source.failing",
+              "provider_account.sync_failing",
+              "budget.threshold",
+              "api_key.expiring",
+              "agent_token.expiring",
+              "webhook.failing",
+              "end_user.credits_low",
+              "reconciliation.open"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "action"
+            ]
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "What it is about within its kind: a price source, an adapter instance key, `{deployment}/{operation}`, a release id."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "link": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A console path (`/admin/...`) to what it is about."
+          },
+          "data": {
+            "type": "object",
+            "description": "Facts by kind, such as `source` and `error_code`."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last raised again or resolved."
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the condition ended or was acted on; always null for an event."
+          },
+          "read": {
+            "type": "boolean",
+            "description": "Whether the calling member has read it."
+          }
+        }
+      },
+      "NotificationPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_page_token"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            }
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UnreadCount": {
+        "type": "object",
+        "required": [
+          "unread"
+        ],
+        "properties": {
+          "unread": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "MarkRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Exactly one of `through` and `ids`.",
+        "oneOf": [
+          { "required": ["through"] },
+          { "required": ["ids"] }
+        ],
+        "properties": {
+          "through": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        }
+      }
+    }
+  }
+}

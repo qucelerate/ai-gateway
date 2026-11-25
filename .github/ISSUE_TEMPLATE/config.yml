@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/qucelerate/ai-gateway/security/policy
+    about: Please report vulnerabilities privately, as SECURITY.md describes, never in a public issue.
+  - name: Documentation
+    url: https://gateway.qucelerate.com
+    about: Guides, API reference and deployment documentation.

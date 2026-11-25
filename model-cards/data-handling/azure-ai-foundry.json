@@ -1,0 +1,32 @@
+{
+  "schema": "qucelerate.data-handling.v1",
+  "provider_family": "azure-ai-foundry",
+  "name": "Microsoft Foundry (Models sold by Azure)",
+  "applies_to": "Models sold by Azure, which include Azure OpenAI models. Models from partners and community may have their own terms.",
+  "facts": {
+    "training_use": {
+      "value": "Prompts, completions, embeddings and training data are not used to train any generative AI foundation models without your permission or instruction.",
+      "source_url": "https://learn.microsoft.com/en-us/azure/ai-foundry/responsible-ai/openai/data-privacy",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "shared_with_model_provider": {
+      "value": "Prompts and completions are not available to OpenAI or other providers of Models sold by Azure, and are not used by them to improve their models or services.",
+      "source_url": "https://learn.microsoft.com/en-us/azure/ai-foundry/responsible-ai/openai/data-privacy",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "abuse_monitoring": {
+      "value": "Prompts and completions are evaluated in real time for harmful content and monitored for uses that violate the product terms; managed customers may apply to modify abuse monitoring.",
+      "source_url": "https://learn.microsoft.com/en-us/azure/ai-foundry/responsible-ai/openai/data-privacy",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "residency": {
+      "value": "For Global and DataZone deployments, data stored at rest, including the abuse monitoring data store, stays in the customer-designated geography; only the processing location changes.",
+      "source_url": "https://learn.microsoft.com/en-us/azure/ai-foundry/responsible-ai/openai/data-privacy",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    }
+  }
+}

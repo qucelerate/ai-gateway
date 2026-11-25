@@ -1,0 +1,74 @@
+{
+  "name": "stream_crlf_and_multiline_data",
+  "description": "SSE parsing follows the specification: CRLF line endings, and data split across several data lines joined with a newline.",
+  "operation": "chat_stream",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions/stream",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-stream-1",
+        "cache-control": "no-store"
+      },
+      "sse": "stream-crlf-multiline.sse"
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "events": [
+      {
+        "event": "response.started",
+        "data": {
+          "model": "chat-default"
+        }
+      },
+      {
+        "event": "choice.delta",
+        "data": {
+          "content_delta": "multi"
+        }
+      },
+      {
+        "event": "choice.finished",
+        "data": {
+          "choice_index": 0,
+          "finish_reason": "stop"
+        }
+      },
+      {
+        "event": "response.completed",
+        "data": {
+          "usage": null
+        }
+      }
+    ]
+  }
+}

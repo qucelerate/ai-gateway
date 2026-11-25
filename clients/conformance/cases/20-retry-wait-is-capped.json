@@ -1,0 +1,98 @@
+{
+  "name": "retry_wait_is_capped",
+  "description": "A Retry-After above 60 seconds, or missing, does not stall the client: it waits at most 60 seconds, and 1 second when there is none.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 429,
+      "headers": {
+        "retry-after": "3600"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/rate_limit_exceeded",
+        "code": "rate_limit_exceeded",
+        "title": "error",
+        "status": 429,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-err"
+      }
+    },
+    {
+      "status": 503,
+      "headers": {},
+      "json": {
+        "type": "https://gateway.invalid/problems/provider_circuit_open",
+        "code": "provider_circuit_open",
+        "title": "error",
+        "status": 503,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-err"
+      }
+    },
+    {
+      "status": 200,
+      "headers": {},
+      "json": {
+        "id": "chatcmpl-7",
+        "model": "chat-default",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Hello.",
+              "name": null,
+              "tool_call_id": null
+            },
+            "finish_reason": "stop",
+            "tool_calls": [],
+            "refusal": null,
+            "safety": [],
+            "annotations": []
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 3,
+    "same_idempotency_key": true,
+    "sleeps": [
+      60,
+      1
+    ],
+    "result": {
+      "id": "chatcmpl-7"
+    }
+  }
+}

@@ -1,0 +1,320 @@
+{
+  "description": "Problem codes the inference API returns (contract 1.0.0). `code` is an open string: clients must handle codes not listed here by HTTP status. `reserved`: whether the request had been reserved (so its Idempotency-Key is spent); `maybe` when it depends on where the failure happened. `retry`: `same_key` the client retries automatically with the same key after Retry-After; `new_key` a caller may resend as a new request with a new key; `fix` the request, credential, or configuration must change first; `none` do not resend automatically.",
+  "codes": [
+    {
+      "code": "authentication_required",
+      "status": 401,
+      "reserved": false,
+      "retry": "fix",
+      "description": "No bearer credential was sent."
+    },
+    {
+      "code": "invalid_api_key",
+      "status": 401,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The key is unknown, revoked, disabled, or expired."
+    },
+    {
+      "code": "insufficient_scope",
+      "status": 403,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The key lacks the scope for this endpoint."
+    },
+    {
+      "code": "idempotency_key_required",
+      "status": 400,
+      "reserved": false,
+      "retry": "fix",
+      "description": "Idempotency-Key header missing."
+    },
+    {
+      "code": "idempotency_key_invalid",
+      "status": 400,
+      "reserved": false,
+      "retry": "fix",
+      "description": "Idempotency-Key is empty or longer than 255 characters."
+    },
+    {
+      "code": "request_too_large",
+      "status": 413,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The request body is over the size limit."
+    },
+    {
+      "code": "unsupported_media_type",
+      "status": 415,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The body was not sent as application/json."
+    },
+    {
+      "code": "invalid_request_body",
+      "status": 400,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The body is not valid JSON."
+    },
+    {
+      "code": "request_body_unprocessable",
+      "status": 422,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The JSON does not match the request schema, for example an unknown field."
+    },
+    {
+      "code": "chat_request_out_of_bounds",
+      "status": 422,
+      "reserved": false,
+      "retry": "fix",
+      "description": "Message count or sizes are outside the documented bounds."
+    },
+    {
+      "code": "chat_role_invalid",
+      "status": 422,
+      "reserved": false,
+      "retry": "fix",
+      "description": "A message role is not one the contract lists."
+    },
+    {
+      "code": "chat_input_bound_exceeded",
+      "status": 422,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The input is larger than the model's input bound."
+    },
+    {
+      "code": "temperature_invalid",
+      "status": 422,
+      "reserved": false,
+      "retry": "fix",
+      "description": "temperature is outside 0 to 2."
+    },
+    {
+      "code": "max_tokens_invalid",
+      "status": 422,
+      "reserved": false,
+      "retry": "fix",
+      "description": "max_tokens is outside 1 to 4096 or above the model's limit."
+    },
+    {
+      "code": "embedding_request_out_of_bounds",
+      "status": 422,
+      "reserved": false,
+      "retry": "fix",
+      "description": "Input count or sizes are outside the documented bounds."
+    },
+    {
+      "code": "embedding_input_bound_exceeded",
+      "status": 422,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The input is larger than the model's input bound."
+    },
+    {
+      "code": "model_unavailable",
+      "status": 404,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The model alias is not offered to this caller."
+    },
+    {
+      "code": "stream_resume_unsupported",
+      "status": 409,
+      "reserved": false,
+      "retry": "fix",
+      "description": "Streams cannot be resumed; Last-Event-ID is refused."
+    },
+    {
+      "code": "idempotency_conflict",
+      "status": 409,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The key was used before with a different request."
+    },
+    {
+      "code": "idempotency_in_progress",
+      "status": 409,
+      "reserved": true,
+      "retry": "none",
+      "description": "The first attempt with this key is still running. Retrying cannot return its answer."
+    },
+    {
+      "code": "idempotency_terminal",
+      "status": 409,
+      "reserved": true,
+      "retry": "none",
+      "description": "The key is spent: its request already finished. Send a new request with a new key if it is safe to run again."
+    },
+    {
+      "code": "quota_exceeded",
+      "status": 429,
+      "reserved": false,
+      "retry": "fix",
+      "description": "A budget, or the end user's allowance and credits, cannot cover the request. Retrying does not help until the budget is raised, the user is given more, or the month resets."
+    },
+    {
+      "code": "rate_limit_exceeded",
+      "status": 429,
+      "reserved": false,
+      "retry": "same_key",
+      "description": "A requests-per-minute limit refused the request before anything was reserved. Retry-After gives the wait."
+    },
+    {
+      "code": "concurrency_limit_exceeded",
+      "status": 429,
+      "reserved": false,
+      "retry": "same_key",
+      "description": "A concurrent-request limit refused the request before anything was reserved. Retry-After gives the wait."
+    },
+    {
+      "code": "provider_circuit_open",
+      "status": 503,
+      "reserved": false,
+      "retry": "same_key",
+      "description": "The deployment is failing and was not called. Retry-After gives the wait."
+    },
+    {
+      "code": "inference_unavailable",
+      "status": 503,
+      "reserved": "maybe",
+      "retry": "none",
+      "description": "The gateway could not serve inference, for example because its database is unreachable."
+    },
+    {
+      "code": "authentication_unavailable",
+      "status": 503,
+      "reserved": false,
+      "retry": "none",
+      "description": "The gateway could not check the credential."
+    },
+    {
+      "code": "provider_rate_limited",
+      "status": 429,
+      "reserved": true,
+      "retry": "new_key",
+      "description": "The provider refused the request as rate limited; Retry-After passes on its wait when it gave one."
+    },
+    {
+      "code": "provider_unavailable",
+      "status": 503,
+      "reserved": true,
+      "retry": "new_key",
+      "description": "The provider could not be reached or refused the request as unavailable."
+    },
+    {
+      "code": "provider_invalid_request",
+      "status": 422,
+      "reserved": "maybe",
+      "retry": "fix",
+      "description": "The request was rejected as invalid for the provider: by the gateway's own checks for that provider before anything was reserved, or by the provider itself."
+    },
+    {
+      "code": "provider_timeout",
+      "status": 504,
+      "reserved": true,
+      "retry": "none",
+      "description": "The provider did not answer in time. It may have done, and billed, the work."
+    },
+    {
+      "code": "provider_failure",
+      "status": 502,
+      "reserved": true,
+      "retry": "none",
+      "description": "The provider failed, or a stream ended in a provider error. It may have done, and billed, the work."
+    },
+    {
+      "code": "accounting_bound_exceeded",
+      "status": 422,
+      "reserved": "maybe",
+      "retry": "none",
+      "description": "The request's bound does not fit: either its input bound exceeds what the route allows (refused before anything was reserved; shrink the request), or the provider used more than the bound allowed (the work was done and billed)."
+    },
+    {
+      "code": "file_not_found",
+      "status": 404,
+      "reserved": false,
+      "retry": "fix",
+      "description": "No file with this id belongs to the API key's service account, or its content was purged."
+    },
+    {
+      "code": "file_purpose_invalid",
+      "status": 400,
+      "reserved": false,
+      "retry": "fix",
+      "description": "Files are uploaded, and batches read, with purpose `batch` only."
+    },
+    {
+      "code": "batch_not_found",
+      "status": 404,
+      "reserved": false,
+      "retry": "fix",
+      "description": "No batch with this id belongs to the API key's service account."
+    },
+    {
+      "code": "batch_request_invalid",
+      "status": 400,
+      "reserved": false,
+      "retry": "fix",
+      "description": "`endpoint` is not `/v1/chat/completions` or `/v1/embeddings`, `completion_window` is not `24h`, or `metadata` is not at most 16 string values."
+    },
+    {
+      "code": "batch_validation_failed",
+      "status": 400,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The input file was refused as a whole before anything was reserved; `errors` lists each refused line by number and code."
+    },
+    {
+      "code": "batch_store_unavailable",
+      "status": 503,
+      "reserved": false,
+      "retry": "none",
+      "description": "The gateway has no file store configured, so it takes no files or batches."
+    },
+    {
+      "code": "end_user_required",
+      "status": 400,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The service account requires the Gateway-End-User header naming the app's user."
+    },
+    {
+      "code": "end_user_invalid",
+      "status": 400,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The end-user ID (Gateway-End-User or user) is not 1 to 256 bytes of visible UTF-8."
+    },
+    {
+      "code": "end_user_not_registered",
+      "status": 403,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The end user has no plan and the service account has no default plan; the app assigns one first."
+    },
+    {
+      "code": "routing_policy_denied",
+      "status": 403,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The organization's routing policy permits none of the model alias's deployments (provider family or location); an administrator changes the policy or the alias's routes first."
+    },
+    {
+      "code": "chat_tools_invalid",
+      "status": 422,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The request's tools, tool_choice, tool calls or tool results break the contract's rules (a bad name or schema, a call without its result, a result for no call); the detail says which."
+    },
+    {
+      "code": "tools_unsupported",
+      "status": 422,
+      "reserved": false,
+      "retry": "fix",
+      "description": "The request defines tools or carries tool calls or results, and the model alias's route does not take tools, or its provider cannot honour a tool option the request sets; the detail says which."
+    }
+  ]
+}

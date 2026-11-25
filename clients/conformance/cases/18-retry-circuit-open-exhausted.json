@@ -1,0 +1,98 @@
+{
+  "name": "retry_circuit_open_exhausted",
+  "description": "A 503 provider_circuit_open is retried with the same key up to the retry limit, then surfaces with its Retry-After.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 503,
+      "headers": {
+        "retry-after": "2",
+        "x-request-id": "req-503-0"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/provider_circuit_open",
+        "code": "provider_circuit_open",
+        "title": "error",
+        "status": 503,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-503-0"
+      }
+    },
+    {
+      "status": 503,
+      "headers": {
+        "retry-after": "2",
+        "x-request-id": "req-503-1"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/provider_circuit_open",
+        "code": "provider_circuit_open",
+        "title": "error",
+        "status": 503,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-503-1"
+      }
+    },
+    {
+      "status": 503,
+      "headers": {
+        "retry-after": "2",
+        "x-request-id": "req-503-2"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/provider_circuit_open",
+        "code": "provider_circuit_open",
+        "title": "error",
+        "status": 503,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-503-2"
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 3,
+    "same_idempotency_key": true,
+    "sleeps": [
+      2,
+      2
+    ],
+    "error": {
+      "kind": "problem",
+      "status": 503,
+      "code": "provider_circuit_open",
+      "request_id": "req-503-2",
+      "retry_after": 2
+    }
+  }
+}

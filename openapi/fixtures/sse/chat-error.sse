@@ -1,0 +1,2 @@
+event: error
+data: {"code":"provider_error","status":502}

@@ -1,0 +1,1172 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway deployment admin API",
+    "version": "1.0.0",
+    "description": "Deployment admins manage the deployment's organizations as a whole without seeing inside them: they see each organization's name, state and member count only, and are not members by virtue of the role.\n\nStates: **active**; **suspended**, reversible, where every way in is refused: API keys and agent tokens no longer authenticate, sessions get `403 organization_suspended` on the organization's routes (and the organization leaves their organization list), its invitations cannot be inspected or accepted, its identity provider takes no sign-ins, its webhook deliveries wait and its email domains route nowhere; **deleted**, only from suspended and confirmed by typing the slug, where the organization is hidden everywhere (`404`) but kept. Deleting frees the slug and the organization's email domains and revokes pending invitations. Its secrets (provider credentials and cloud connections, webhook signing secrets, its identity provider's client secret) stay stored, encrypted and unused, so a restore brings it back whole; nothing inside the organization is switched off, its state alone refuses every way in, and webhook deliveries wait. Deleting does not revoke these secrets at their providers: when an organization will not be restored, its administrators revoke them there. Each organization reports what it keeps stored (`stored`, counts only). The deployment's last organization cannot be deleted. A restore goes by id, returns the organization to suspended, and needs a new slug when a live organization took the old one.\n\nOwners may ask for their organization's deletion; deployment admins see the request and carry it out. With `GATEWAY_SELF_SERVE_ORGANIZATIONS=true` any signed-in person may create an organization and owns it (off by default). Every change is recorded in the append-only deployment audit log. Errors are `application/problem+json`."
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie. Writes need the `X-CSRF-Token` header matching the `__Host-gateway_csrf` cookie."
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "Organization": {
+        "type": "object",
+        "description": "An organization as a deployment admin sees it: name and state, never its contents.",
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "status",
+          "created_at",
+          "suspended_at",
+          "deleted_at",
+          "deletion_requested_at",
+          "members",
+          "stored"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "deleted"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "suspended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "deletion_requested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "An owner asked for the organization's deletion."
+          },
+          "members": {
+            "type": "integer",
+            "description": "Enabled members who are people (agents not counted)."
+          },
+          "stored": {
+            "type": "object",
+            "description": "Secrets the organization keeps stored, encrypted, counted and never shown. They stay through deletion so the organization can be restored; if it will not be, revoke them at each provider.",
+            "required": [
+              "provider_credentials",
+              "cloud_connections",
+              "webhook_signing_secrets",
+              "identity_provider_client_secret"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "provider_credentials": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Provider credentials holding a key."
+              },
+              "cloud_connections": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Provider credentials acting as a cloud principal (a role, an app registration, a service account)."
+              },
+              "webhook_signing_secrets": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "identity_provider_client_secret": {
+                "type": "boolean",
+                "description": "Its own identity provider holds a client secret."
+              }
+            }
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "required": [
+          "id",
+          "occurred_at",
+          "actor_user_id",
+          "actor_email",
+          "action",
+          "organization_id",
+          "target_user_id",
+          "detail"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "NULL: the operator, through the CLI."
+          },
+          "actor_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "examples": [
+              "organization.created",
+              "organization.suspended",
+              "organization.unsuspended",
+              "organization.deleted",
+              "organization.restored",
+              "organization.deletion_requested",
+              "organization.deletion_request_withdrawn",
+              "organization.self_served",
+              "deployment_admin.granted",
+              "setup.completed"
+            ]
+          },
+          "organization_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "target_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "detail": {
+            "type": "object",
+            "description": "Names at the time (`slug`, `name`, `previous_slug`), and for a deletion what stayed stored (`secrets_kept`, counts as in `Organization.stored`). Never secrets."
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/admin/v1/deployment/organizations": {
+      "get": {
+        "operationId": "listDeploymentOrganizations",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Every organization",
+        "description": "Deployment admins only (the account first-run setup made, and those granted with `gateway admin grant`), from a person's session; writes need the CSRF token. A session limited to one organization (from its own identity provider) cannot use these routes.",
+        "parameters": [
+          {
+            "name": "deleted",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Include deleted organizations (listed last)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "self_serve"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Organization"
+                      }
+                    },
+                    "self_serve": {
+                      "type": "boolean",
+                      "description": "Whether people may create organizations themselves."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`deployment_admin_required` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createDeploymentOrganization",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create an organization",
+        "description": "Deployment admins only (the account first-run setup made, and those granted with `gateway admin grant`), from a person's session; writes need the CSRF token. A session limited to one organization (from its own identity provider) cannot use these routes. With `owner`, its first owner: `invitation` makes an owner invitation (7 days; accepted with a password or an identity provider, as any invitation) and answers its link; `local_account` makes the person owner through a local account, new (answered with a 24-hour set-password link) or existing (no link). Links are in this response only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "slug"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "slug": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                  },
+                  "owner": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "email",
+                      "method"
+                    ],
+                    "properties": {
+                      "email": {
+                        "type": "string",
+                        "format": "email"
+                      },
+                      "method": {
+                        "type": "string",
+                        "enum": [
+                          "invitation",
+                          "local_account"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "organization",
+                    "owner_link"
+                  ],
+                  "properties": {
+                    "organization": {
+                      "$ref": "#/components/schemas/Organization"
+                    },
+                    "owner_link": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "email",
+                            "link",
+                            "expires_at"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "invitation",
+                                "set_password"
+                              ]
+                            },
+                            "email": {
+                              "type": "string"
+                            },
+                            "link": {
+                              "type": "string",
+                              "format": "uri"
+                            },
+                            "expires_at": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`deployment_admin_required` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`slug_taken`, `local_accounts_disabled`, `invitations_unavailable` or `owner_unavailable` (that account is disabled).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/deployment/organizations/{organization_id}/suspend": {
+      "parameters": [
+        {
+          "name": "organization_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "suspendOrganization",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Suspend an organization",
+        "description": "Deployment admins only (the account first-run setup made, and those granted with `gateway admin grant`), from a person's session; writes need the CSRF token. A session limited to one organization (from its own identity provider) cannot use these routes.",
+        "responses": {
+          "200": {
+            "description": "Suspended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`deployment_admin_required` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`organization_suspended` or `organization_deleted`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/deployment/organizations/{organization_id}/unsuspend": {
+      "parameters": [
+        {
+          "name": "organization_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "unsuspendOrganization",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Lift a suspension",
+        "description": "Deployment admins only (the account first-run setup made, and those granted with `gateway admin grant`), from a person's session; writes need the CSRF token. A session limited to one organization (from its own identity provider) cannot use these routes.",
+        "responses": {
+          "200": {
+            "description": "Active again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`deployment_admin_required` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`organization_active` or `organization_deleted`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/deployment/organizations/{organization_id}/delete": {
+      "parameters": [
+        {
+          "name": "organization_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "deleteOrganization",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete a suspended organization",
+        "description": "Deployment admins only (the account first-run setup made, and those granted with `gateway admin grant`), from a person's session; writes need the CSRF token. A session limited to one organization (from its own identity provider) cannot use these routes. Its secrets stay stored, encrypted; see above.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "confirm_slug"
+                ],
+                "properties": {
+                  "confirm_slug": {
+                    "type": "string",
+                    "description": "The organization's slug, typed to confirm."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`deployment_admin_required` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`organization_active` (suspend it first), `organization_deleted` or `last_organization`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`confirmation_mismatch`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/deployment/organizations/{organization_id}/restore": {
+      "parameters": [
+        {
+          "name": "organization_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "restoreOrganization",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Restore a deleted organization",
+        "description": "Deployment admins only (the account first-run setup made, and those granted with `gateway admin grant`), from a person's session; writes need the CSRF token. A session limited to one organization (from its own identity provider) cannot use these routes. The organization comes back suspended, with everything it had; unsuspending it makes its keys, sessions, webhooks and identity provider work again as they were before the deletion.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                    "description": "A new slug, needed when a live organization took the old one."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restored, suspended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`deployment_admin_required` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`slug_taken` or `organization_active`/`organization_suspended` (not deleted).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/deployment/audit": {
+      "get": {
+        "operationId": "listDeploymentAudit",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "The deployment audit log, newest first",
+        "description": "Deployment admins only (the account first-run setup made, and those granted with `gateway admin grant`), from a person's session; writes need the CSRF token. A session limited to one organization (from its own identity provider) cannot use these routes.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Event"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`deployment_admin_required` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations": {
+      "post": {
+        "operationId": "createOwnOrganization",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create an organization and own it (self-serve)",
+        "description": "Only with `GATEWAY_SELF_SERVE_ORGANIZATIONS=true`; any signed-in person, with the CSRF token. (`GET` on this path lists the caller's organizations.)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "slug"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "slug": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created; the caller is its owner.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "slug",
+                    "name"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`self_serve_organizations_disabled`, `csrf_origin_or_token_required`, `deployment_sign_in_required`: the session came from one organization's own identity provider and acts only there; sign in with the gateway's own sign-in (a local account or its process-wide provider) to create organizations.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`slug_taken`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{organization_id}/deletion-request": {
+      "parameters": [
+        {
+          "name": "organization_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getDeletionRequest",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Whether an owner asked for deletion",
+        "description": "Any member.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "requested_at"
+                  ],
+                  "properties": {
+                    "requested_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`organization_not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "requestDeletion",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Ask the deployment's admins to delete the organization",
+        "description": "Owners only, with the CSRF token. Nothing is deleted until a deployment admin suspends and deletes it.",
+        "responses": {
+          "200": {
+            "description": "Requested.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "requested_at"
+                  ],
+                  "properties": {
+                    "requested_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "withdrawDeletionRequest",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Withdraw the deletion request",
+        "description": "Owners only, with the CSRF token.",
+        "responses": {
+          "200": {
+            "description": "Withdrawn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "requested_at"
+                  ],
+                  "properties": {
+                    "requested_at": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

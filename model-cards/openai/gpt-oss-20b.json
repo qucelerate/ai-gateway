@@ -1,0 +1,41 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "openai/gpt-oss-20b",
+  "name": "gpt-oss-20b",
+  "vendor": "OpenAI",
+  "matches": {
+    "bedrock": [
+      "openai.gpt-oss-20b-1:0"
+    ]
+  },
+  "overview": {
+    "license": {
+      "value": "apache-2.0",
+      "source_url": "https://huggingface.co/openai/gpt-oss-20b",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "open_weight": {
+      "value": true,
+      "source_url": "https://huggingface.co/openai/gpt-oss-20b",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    },
+    "context_window_tokens": {
+      "value": 131072,
+      "source_url": "https://huggingface.co/openai/gpt-oss-20b/blob/main/config.json",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider"
+    }
+  },
+  "evaluations": [],
+  "safety": {
+    "model_card_url": {
+      "value": "https://arxiv.org/abs/2508.10925",
+      "source_url": "https://arxiv.org/abs/2508.10925",
+      "retrieved_at": "2026-11-14",
+      "reported_by": "provider",
+      "title": "gpt-oss-120b & gpt-oss-20b Model Card"
+    }
+  }
+}

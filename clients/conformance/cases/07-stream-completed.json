@@ -1,0 +1,103 @@
+{
+  "name": "stream_completed",
+  "description": "A stream yields its named events in order and ends with response.completed.",
+  "operation": "chat_stream",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions/stream",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-stream-1",
+        "cache-control": "no-store"
+      },
+      "sse": "stream-completed.sse"
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "events": [
+      {
+        "event": "response.started",
+        "data": {
+          "model": "chat-default"
+        }
+      },
+      {
+        "event": "choice.delta",
+        "data": {
+          "choice_index": 0,
+          "content_delta": "Hel"
+        }
+      },
+      {
+        "event": "choice.delta",
+        "data": {
+          "choice_index": 0,
+          "content_delta": "lo"
+        }
+      },
+      {
+        "event": "choice.finished",
+        "data": {
+          "choice_index": 0,
+          "finish_reason": "stop"
+        }
+      },
+      {
+        "event": "usage",
+        "data": {
+          "input_tokens": 9,
+          "output_tokens": 2,
+          "cached_input_tokens": 0,
+          "reasoning_tokens": 0,
+          "other_tokens": null,
+          "quality": "exact",
+          "completeness": "complete"
+        }
+      },
+      {
+        "event": "response.completed",
+        "data": {
+          "model": "chat-default",
+          "usage": {
+            "input_tokens": 9,
+            "output_tokens": 2,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0,
+            "other_tokens": null,
+            "quality": "exact",
+            "completeness": "complete"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "name": "problem_unknown_code",
+  "description": "A code the client does not know surfaces verbatim with its status.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 400,
+      "headers": {
+        "x-request-id": "req-new"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/some_future_code",
+        "code": "some_future_code",
+        "title": "error",
+        "status": 400,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-new"
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "error": {
+      "kind": "problem",
+      "status": 400,
+      "code": "some_future_code",
+      "request_id": "req-new"
+    }
+  }
+}

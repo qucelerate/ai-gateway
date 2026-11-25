@@ -1,0 +1,81 @@
+name: Rust client
+
+on:
+  push:
+    # main only: a pull request runs this for its branch.
+    branches: [main]
+    paths:
+      - ".github/actions/setup-rust/**"
+      - "clients/rust/**"
+      - "clients/conformance/**"
+      - ".github/workflows/clients-rust.yml"
+  pull_request:
+    paths:
+      - ".github/actions/setup-rust/**"
+      - "clients/rust/**"
+      - "clients/conformance/**"
+      - ".github/workflows/clients-rust.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-rust-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: clients/rust
+
+jobs:
+  check-and-test:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Rust toolchain
+        uses: ./.github/actions/setup-rust
+        with:
+          toolchain: "stable"
+          components: clippy,rustfmt
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: clients/rust
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      # tests/conformance.rs runs every case of clients/conformance.
+      - name: Run tests, including the conformance suite
+        run: cargo test --all-targets --locked
+
+      - name: Run documentation tests
+        run: cargo test --doc --locked
+
+  # Cargo.toml declares rust-version 1.85: build and test the locked
+  # dependencies with exactly that toolchain.
+  minimum-rust-version:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Rust 1.85
+        uses: ./.github/actions/setup-rust
+        with:
+          toolchain: "1.85"
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: clients/rust
+          key: msrv
+
+      - name: Run tests on the minimum supported Rust version
+        run: cargo test --all-targets --locked

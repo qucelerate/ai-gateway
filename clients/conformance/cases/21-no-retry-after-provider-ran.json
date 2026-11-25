@@ -1,0 +1,62 @@
+{
+  "name": "no_retry_after_provider_ran",
+  "description": "A provider's own rate limit (provider_rate_limited) is never retried automatically, even with Retry-After: the request reached the provider and its key is spent.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 429,
+      "headers": {
+        "retry-after": "1",
+        "x-request-id": "req-p429"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/provider_rate_limited",
+        "code": "provider_rate_limited",
+        "title": "error",
+        "status": 429,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions",
+        "request_id": "req-p429"
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "error": {
+      "kind": "problem",
+      "status": 429,
+      "code": "provider_rate_limited",
+      "request_id": "req-p429",
+      "retry_after": 1
+    }
+  }
+}

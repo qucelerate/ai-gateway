@@ -1,0 +1,54 @@
+{{- if .Values.controlPlane.enabled }}
+# Discovery, pricing, outbox delivery, recovery, retention: no HTTP listener.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.name" . }}-worker
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "gateway.selectorLabels" (dict "root" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway.selectorLabels" (dict "root" . "component" "worker") | nindent 8 }}
+      {{- with include "gateway.metricsAnnotations" . | trim }}{{ . | nindent 6 }}{{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "gateway.cloudPod" (dict "root" . "tlsSecret" "") | nindent 6 }}
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "gateway.podSecurity" . | nindent 8 }}
+        {{- include "gateway.runAs" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: "{{ .Values.image.repository }}:{{ include "gateway.imageTag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "gateway.env" (dict "root" . "profile" "worker") | nindent 12 }}
+            {{- include "gateway.cloudEnv" . | nindent 12 }}
+            {{- with include "gateway.metricsEnv" . | trim }}{{ . | nindent 12 }}{{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+            {{- with .Values.cloudIdentity.existingSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+          {{- include "gateway.cloudContainer" (dict "root" . "tlsSecret" "") | nindent 10 }}
+          {{- if .Values.metrics.enabled }}
+          ports:
+            {{- with include "gateway.metricsPort" . | trim }}{{ . | nindent 12 }}{{- end }}
+          {{- end }}
+          securityContext:
+            {{- include "gateway.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+{{- end }}

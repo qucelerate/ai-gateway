@@ -1,0 +1,3292 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin reporting API",
+    "version": "1.0.0",
+    "description": "Usage aggregates, metadata-only inference traces, and reconciliation items. Authenticated with a session cookie or an agent token (`Authorization: Bearer gwa_…`), which acts only in its agent's organization. Every successful read is audited. The one write, resolving a reconciliation item, is idempotent, versioned, and audited with the change. Totals are never blended across `confidence` or `currency`; an amount is summed only from rows that carry one, and the rest are counted in `unpriced_request_count`."
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_…",
+        "description": "An agent token (`Authorization: Bearer gwa_…`), for automation: it acts as its agent, only in the agent's organization, with the agent's role. Created with `POST /api/admin/v1/organizations/{org}/agents/{agent_id}/tokens` or, on the server, `gateway agent create`."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid query (`invalid_query`) or page token (`invalid_page_token`, `invalid_page_token_signature`, `page_token_scope_mismatch`, `page_token_query_mismatch`, `page_token_too_large`, `pagination_limit_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "`authentication_required`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "`forbidden`: the actor lacks the permission, or filtered on a team outside its scope.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "`not_found`: absent, or outside the actor's tenant/team scope.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "`service_unavailable` or `authentication_unavailable`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "WriteBadRequest": {
+        "description": "`idempotency_key_required`, `idempotency_key_invalid`, `if_match_invalid`, or a malformed JSON body (`request_body_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "PreconditionRequired": {
+        "description": "`if_match_required`: the `If-Match` header is missing.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "Confidence": {
+        "type": "string",
+        "enum": [
+          "exact",
+          "estimated",
+          "unknown"
+        ]
+      },
+      "TokenTotals": {
+        "type": "object",
+        "required": [
+          "input",
+          "output",
+          "cached_input",
+          "reasoning",
+          "other"
+        ],
+        "description": "Sums of reported counters; unreported counters contribute nothing (see `incomplete_request_count`).",
+        "properties": {
+          "input": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "output": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cached_input": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reasoning": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "other": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "UsageAggregate": {
+        "type": "object",
+        "required": [
+          "currency",
+          "confidence",
+          "request_count",
+          "amount_minor",
+          "unpriced_request_count",
+          "incomplete_request_count",
+          "tokens"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/Confidence"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sum of amounts in money units of `currency` (10⁻⁶ of its smallest unit), over priced requests only."
+          },
+          "unpriced_request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "incomplete_request_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Requests whose usage was partial or unavailable."
+          },
+          "tokens": {
+            "$ref": "#/components/schemas/TokenTotals"
+          }
+        }
+      },
+      "UsageReportRow": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "group",
+              "values"
+            ],
+            "properties": {
+              "group": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The first dimension's value: UTC date (`YYYY-MM-DD`) for `day`; id for `team`/`service_account` (`null` = organization-level usage); label for `model`/`deployment`; provider family for `provider_family` and catalog deployment location for `location` (`null` = usage without catalog provenance, or a deployment with no location)."
+              },
+              "values": {
+                "type": "object",
+                "description": "Each grouped dimension's value by dimension name, with the same meaning (and nulls) as `group`.",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/UsageAggregate"
+          }
+        ]
+      },
+      "UsageReport": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "group_by",
+          "totals",
+          "items",
+          "next_page_token"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "group_by": {
+            "type": "string",
+            "description": "The dimensions, comma-separated: `day`, or `team,model`."
+          },
+          "totals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageAggregate"
+            },
+            "description": "One entry per (currency, confidence) over the whole filtered window, independent of paging; ordered by currency then confidence."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageReportRow"
+            },
+            "description": "Ordered by group, currency, confidence."
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UsageMeasures": {
+          "type": "object",
+          "description": "What a set of requests amounts to. Money is per currency and never summed across currencies.",
+          "required": [
+            "requests",
+            "failed_requests",
+            "pending_requests",
+            "expired_requests",
+            "unknown_requests",
+            "tokens",
+            "amounts",
+            "unpriced_requests",
+            "no_usage_requests",
+            "incomplete_requests",
+            "duration"
+          ],
+          "properties": {
+            "requests": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "failed_requests": {
+              "type": "integer",
+              "format": "int64",
+              "description": "Requests the provider failed (`status` `failed`)."
+            },
+            "pending_requests": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "expired_requests": {
+              "type": "integer",
+              "format": "int64",
+              "description": "Reservations that expired before the provider was called."
+            },
+            "unknown_requests": {
+              "type": "integer",
+              "format": "int64",
+              "description": "Requests the expiry worker closed after a claim: the provider's result is unknown until settled or resolved. They have no duration."
+            },
+            "tokens": {
+              "$ref": "#/components/schemas/TokenTotals"
+            },
+            "amounts": {
+              "type": "array",
+              "description": "One entry per currency, sorted by currency; only currencies with a priced request.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "currency",
+                  "amount_minor"
+                ],
+                "properties": {
+                  "currency": {
+                    "type": "string"
+                  },
+                  "amount_minor": {
+                    "type": "integer",
+                    "format": "int64"
+                  }
+                }
+              }
+            },
+            "unpriced_requests": {
+              "type": "integer",
+              "format": "int64",
+              "description": "Requests with usage but no amount; not in `amounts`."
+            },
+            "no_usage_requests": {
+              "type": "integer",
+              "format": "int64",
+              "description": "Requests with no usage recorded: no tokens and no amount."
+            },
+            "incomplete_requests": {
+              "type": "integer",
+              "format": "int64",
+              "description": "Requests whose usage was partial or unavailable."
+            },
+            "duration": {
+              "type": "object",
+              "description": "Admission to settlement, in milliseconds; `null` when no request in the set has a duration.",
+              "required": [
+                "average_ms",
+                "p50_ms",
+                "p95_ms"
+              ],
+              "properties": {
+                "average_ms": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64"
+                },
+                "p50_ms": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64"
+                },
+                "p95_ms": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64"
+                }
+              }
+            }
+          }
+        },
+        "UsagePoint": {
+          "allOf": [
+            {
+              "type": "object",
+              "required": [
+                "bucket"
+              ],
+              "properties": {
+                "bucket": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "The bucket's start (UTC)."
+                }
+              }
+            },
+            {
+              "$ref": "#/components/schemas/UsageMeasures"
+            }
+          ]
+        },
+        "UsageSeries": {
+          "type": "object",
+          "required": [
+            "value",
+            "label",
+            "other",
+            "totals",
+            "points"
+          ],
+          "properties": {
+            "value": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The split dimension's value; `null` for `other`, for an unsplit query, and for requests without the value (organization-level usage split by team)."
+            },
+            "label": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The value's name: team and service account names, API key prefixes, users' display names or emails."
+            },
+            "other": {
+              "type": "boolean",
+              "description": "Every value past the top `limit`, together."
+            },
+            "totals": {
+              "$ref": "#/components/schemas/UsageMeasures"
+            },
+            "points": {
+              "type": "array",
+              "description": "Sparse: a bucket without requests has no point.",
+              "items": {
+                "$ref": "#/components/schemas/UsagePoint"
+              }
+            }
+          }
+        },
+        "UsageSeriesReport": {
+          "type": "object",
+          "required": [
+            "from",
+            "to",
+            "granularity",
+            "split_by",
+            "rank_by",
+            "buckets",
+            "totals",
+            "previous",
+            "series",
+            "truncated"
+          ],
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "to": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "granularity": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ]
+            },
+            "split_by": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "team",
+                "service_account",
+                "api_key",
+                "user",
+                "end_user",
+                "model",
+                "alias",
+                "deployment",
+                "provider_family",
+                "location",
+                "operation",
+                "status",
+                "outcome",
+                "error_category",
+                "model_master",
+                null
+              ]
+            },
+            "rank_by": {
+              "type": "string",
+              "enum": [
+                "requests",
+                "tokens",
+                "cost"
+              ]
+            },
+            "buckets": {
+              "type": "array",
+              "description": "Every bucket's start (UTC) overlapping the window.",
+              "items": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "totals": {
+              "$ref": "#/components/schemas/UsageMeasures"
+            },
+            "previous": {
+              "type": "object",
+              "description": "The same filters over the window just before this one, as long.",
+              "required": [
+                "from",
+                "to",
+                "totals"
+              ],
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "to": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "totals": {
+                  "$ref": "#/components/schemas/UsageMeasures"
+                }
+              }
+            },
+            "series": {
+              "type": "array",
+              "description": "Largest first by `rank_by`, ties by value; `other` last.",
+              "items": {
+                "$ref": "#/components/schemas/UsageSeries"
+              }
+            },
+            "truncated": {
+              "type": "boolean",
+              "description": "Whether values past the top `limit` were folded into `other`."
+            }
+          }
+        },
+        "UsageEvent": {
+          "type": "object",
+          "description": "One request: its metadata trace with the latest usage recorded for it.",
+          "required": [
+            "id",
+            "correlation_id",
+            "recorded_at",
+            "finalized_at",
+            "duration_ms",
+            "team_id",
+            "service_account_id",
+            "api_key_id",
+            "user_id",
+            "labels",
+            "model",
+            "alias",
+            "deployment",
+            "provider_family",
+            "location",
+            "operation",
+            "status",
+            "outcome",
+            "error_category",
+            "tokens",
+            "currency",
+            "amount_minor",
+            "usage_confidence",
+            "content_state",
+            "batch_id",
+            "custom_id",
+            "model_master"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The trace id: `GET …/traces/{id}` reads the trace."
+            },
+            "correlation_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The request id the gateway returned to the caller."
+            },
+            "recorded_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "finalized_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "duration_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "description": "Admission to settlement, in milliseconds: provider time plus the gateway's. `null` while pending, or when expiry or an operator closed the request."
+            },
+            "team_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "service_account_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "api_key_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The API key that made the request; `null` for requests admitted before keys were recorded."
+            },
+            "user_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The service account's current owner."
+            },
+            "labels": {
+              "type": "object",
+              "required": [
+                "team",
+                "service_account",
+                "api_key",
+                "user"
+              ],
+              "properties": {
+                "team": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "service_account": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "api_key": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The key's public prefix."
+                },
+                "user": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Display name, else email."
+                }
+              }
+            },
+            "model": {
+              "type": "string"
+            },
+            "alias": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The public model alias the request named; `null` without catalog provenance."
+            },
+            "deployment": {
+              "type": "string"
+            },
+            "provider_family": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "location": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "operation": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "chat",
+                "chat_stream",
+                "embeddings",
+                null
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "succeeded",
+                "failed",
+                "pending",
+                "expired",
+                "unknown",
+                "failed-over"
+              ],
+              "description": "`failed` when the provider request failed, whatever accounting made of it; `expired` when the reservation expired before the provider was called; `unknown` when the expiry worker closed it after a claim, so the provider's result is unknown; `failed-over` for an attempt the provider refused before any work, after which the request was tried on another deployment of its route (its next attempt has its own trace)."
+            },
+            "outcome": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "How accounting closed the request (`settled`, `unknown`, `bound-breach`, `input-count-drift`, `expired`, `operator-resolved`, `failed-over` for an attempt released, charging nothing, when the request failed over to another deployment, or `refused` for a request released at zero because every deployment tried refused it before any work)."
+            },
+            "error_category": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The gateway's category for a failed provider request (see `provider_error`)."
+            },
+            "tokens": {
+              "type": "object",
+              "required": [
+                "input",
+                "output",
+                "cached_input",
+                "reasoning",
+                "other"
+              ],
+              "properties": {
+                "input": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64"
+                },
+                "output": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64"
+                },
+                "cached_input": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64"
+                },
+                "reasoning": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64"
+                },
+                "other": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64"
+                }
+              }
+            },
+            "currency": {
+              "type": "string"
+            },
+            "amount_minor": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            },
+            "usage_confidence": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Confidence"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "content_state": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "writing",
+                "stored",
+                "off",
+                "unavailable",
+                "failed",
+                "expired",
+                null
+              ],
+              "description": "What the trace holds of the request's content; `null` when tracing was not on for it. The metadata trace exists either way: read content with `GET …/traces/{id}/content` (admin tracing API, `trace_content_read`)."
+            },
+            "batch_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^batch_[0-9a-f-]{36}$",
+              "description": "The batch the request was a line of, as the batches API names it (`batch_<uuid>`); `null` for a request made on its own."
+            },
+            "custom_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 512,
+              "description": "The line's `custom_id` in its batch; `null` for a request made on its own."
+            },
+            "model_master": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The master record (one model across providers, D-033: a model card's id such as `anthropic/claude-sonnet-4-6`, or the organization's `org/<slug>`) the request's deployment was linked to when it was served; `null` for none (no card matched, linked to none, no catalog provenance, or admitted before migration 0141)."
+            }
+          }
+        },
+        "UsageEventPage": {
+          "type": "object",
+          "required": [
+            "items",
+            "next_page_token"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/UsageEvent"
+              }
+            },
+            "next_page_token": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+      "TraceSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "team_id",
+          "service_account_id",
+          "status",
+          "outcome",
+          "model",
+          "deployment",
+          "provider_family",
+          "location",
+          "currency",
+          "amount_minor",
+          "usage_confidence",
+          "recorded_at",
+          "finalized_at",
+          "correlation_id",
+          "api_key_id",
+          "end_user",
+          "alias",
+          "operation",
+          "duration_ms",
+          "error_category",
+          "content_state",
+          "attempt",
+          "failover_of",
+          "batch_id",
+          "custom_id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "service_account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "finalized"
+            ]
+          },
+          "outcome": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "deployment": {
+            "type": "string"
+          },
+          "provider_family": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Catalog provider family of the routed deployment; `null` without catalog provenance."
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Catalog deployment location (region); `null` when unset or without catalog provenance."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "amount_minor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "usage_confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Confidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finalized_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+            "correlation_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The request id the gateway returned to the caller."
+            },
+            "end_user": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The app’s own id of the end user the request was for (D-028); `null` when it named none."
+            },
+            "api_key_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The API key that made the request; `null` for requests admitted before keys were recorded."
+            },
+            "alias": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The public model alias the request named; `null` without catalog provenance."
+            },
+            "operation": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "chat",
+                "chat_stream",
+                "embeddings",
+                null
+              ]
+            },
+            "duration_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "description": "Admission to settlement, in milliseconds: provider time plus the gateway's. `null` while pending, or when expiry or an operator closed the request."
+            },
+            "error_category": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The gateway's category for a failed provider request (see `provider_error`)."
+            },
+            "content_state": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "writing",
+                "stored",
+                "off",
+                "unavailable",
+                "failed",
+                "expired",
+                null
+              ],
+              "description": "What the trace holds of the request's content; `null` when tracing was not on for it. The metadata trace exists either way: read content with `GET …/traces/{id}/content` (admin tracing API, `trace_content_read`)."
+            },
+            "attempt": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8,
+              "description": "Which attempt of its request this is, from 1. A request that failed over to another deployment of its route (D-023) has one trace per attempt; every attempt but the last has the outcome `failed-over`."
+            },
+            "failover_of": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "description": "The trace of the attempt this one replaced; `null` for a request's first attempt."
+            },
+            "batch_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^batch_[0-9a-f-]{36}$",
+              "description": "The batch the request was a line of, as the batches API names it (`batch_<uuid>`); `null` for a request made on its own."
+            },
+            "custom_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 512,
+              "description": "The line's `custom_id` in its batch; `null` for a request made on its own."
+            }
+        }
+      },
+      "TracePage": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_page_token"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceSummary"
+            }
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TraceDetail": {
+        "description": "Metadata only: no request, response, prompt, completion, or credential content exists in this model.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TraceSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "routing"
+            ],
+            "properties": {
+              "routing": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "description": "The catalog release, route, deployment and price that served the request.",
+                    "required": [
+                      "release_id",
+                      "route_id",
+                      "deployment_id",
+                      "price_id",
+                      "price_source",
+                      "price_override_id",
+                      "chat_input_count_mode"
+                    ],
+                    "properties": {
+                      "release_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "route_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "deployment_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "price_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "price_source": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "price_override_id": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "chat_input_count_mode": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "`null` without catalog provenance."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "correlation_id",
+              "provider_request_id",
+              "input_bound",
+              "output_cap",
+              "price_version",
+              "pricing_confidence",
+              "reservation",
+              "usage",
+              "reconciliation",
+              "provider_error"
+            ],
+            "properties": {
+              "correlation_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "provider_request_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Opaque provider correlation handle."
+              },
+              "input_bound": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "output_cap": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "The output token cap reserved for; `null` for embeddings, which reserve input only."
+              },
+              "price_version": {
+                "type": "string"
+              },
+              "pricing_confidence": {
+                "type": "string",
+                "enum": [
+                  "known",
+                  "conservative"
+                ]
+              },
+              "reservation": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "state",
+                  "reserved_minor",
+                  "expires_at"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "reserved",
+                      "claimed",
+                      "settled",
+                      "released",
+                      "unknown",
+                      "expired"
+                    ]
+                  },
+                  "reserved_minor": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "usage": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "description": "Latest usage recorded for the reservation.",
+                    "required": [
+                      "confidence",
+                      "completeness",
+                      "finality",
+                      "tokens",
+                      "amount_minor",
+                      "recorded_at"
+                    ],
+                    "properties": {
+                      "confidence": {
+                        "$ref": "#/components/schemas/Confidence"
+                      },
+                      "completeness": {
+                        "type": "string",
+                        "enum": [
+                          "complete",
+                          "partial",
+                          "unavailable"
+                        ]
+                      },
+                      "finality": {
+                        "type": "string",
+                        "enum": [
+                          "interim",
+                          "partial",
+                          "final"
+                        ]
+                      },
+                      "tokens": {
+                        "type": "object",
+                        "required": [
+                          "input",
+                          "output",
+                          "cached_input",
+                          "reasoning",
+                          "other"
+                        ],
+                        "properties": {
+                          "input": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int64"
+                          },
+                          "output": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int64"
+                          },
+                          "cached_input": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int64"
+                          },
+                          "reasoning": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int64"
+                          },
+                          "other": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int64"
+                          }
+                        }
+                      },
+                      "amount_minor": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "recorded_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reconciliation": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "reason",
+                      "status",
+                      "created_at",
+                      "resolved_at"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "reason": {
+                        "$ref": "#/components/schemas/ReconciliationReason"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "resolved"
+                        ]
+                      },
+                      "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "resolved_at": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "provider_error": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "description": "Why the provider request failed. Never the provider's message or body, which may echo the request.",
+                    "required": [
+                      "category",
+                      "http_status",
+                      "error_type"
+                    ],
+                    "properties": {
+                      "category": {
+                        "type": "string",
+                        "enum": [
+                          "authentication",
+                          "authorization",
+                          "invalid_request",
+                          "unsupported_feature",
+                          "rate_limited",
+                          "unavailable",
+                          "timeout",
+                          "cancelled",
+                          "provider",
+                          "protocol",
+                          "internal"
+                        ],
+                        "description": "The gateway's classification. `protocol` means the provider answered but the gateway could not read the response (an unexpected shape or a stream that ended early); `provider` a provider-side failure; `authentication` and `authorization` a credential or permission the provider refused."
+                      },
+                      "http_status": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 100,
+                        "maximum": 599,
+                        "description": "The provider's HTTP status, when it answered with one."
+                      },
+                      "error_type": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "pattern": "^[A-Za-z0-9._:/-]{1,64}$",
+                        "description": "The provider's own error type, such as `ValidationException` or `rate_limit_exceeded`; null when the provider gave none or it was not a plain identifier."
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Set when the provider request failed; null otherwise. The trace's `provider_request_id` then identifies the failed request to the provider, when it gave one."
+              }
+            }
+          }
+        ]
+      },
+      "ReconciliationReason": {
+        "type": "string",
+        "enum": [
+          "provider-unknown",
+          "expired-after-claim",
+          "bound-breach",
+          "settlement-failed",
+          "input-count-drift"
+        ],
+        "description": "The item's current reason. An open `expired-after-claim` item takes the reason of a finalization that arrives after expiry recovery; otherwise it is why the item was opened."
+      },
+      "ReconciliationItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "reservation_id",
+          "trace_id",
+          "team_id",
+          "service_account_id",
+          "reason",
+          "status",
+          "reservation_state",
+          "model",
+          "deployment",
+          "currency",
+          "reserved_minor",
+          "created_at",
+          "resolved_at",
+          "resolution",
+          "resolved_amount_minor",
+          "resolved_by"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reservation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "trace_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "service_account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReconciliationReason"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "resolved"
+            ]
+          },
+          "reservation_state": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "deployment": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "reserved_minor": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolution": {
+            "description": "`settlement` when a late provider settlement closed the item, `operator` when an administrator resolved it; null while open.",
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "settlement",
+                  "operator"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolved_amount_minor": {
+            "description": "The amount an operator charged; null otherwise.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolved_by": {
+            "description": "The user who resolved the item; null for settlements, or once that user is deleted.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ReconciliationPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_page_token"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationItem"
+            }
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ReconciliationResolution": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "amount_minor"
+        ],
+        "properties": {
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Money units (10⁻⁶ of the currency's smallest unit) of the reservation's currency to charge. `0` releases the held quota without a charge; the amount may exceed `reserved_minor`."
+          }
+        }
+      },
+      "TraceGroup": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "values",
+          "count",
+          "unpriced_count",
+          "amounts",
+          "first_recorded_at",
+          "last_recorded_at"
+        ],
+        "properties": {
+          "values": {
+            "type": "object",
+            "description": "Each grouped dimension's value; null when the trace has none (organization-level for `team`, no catalog provenance for `provider_family`).",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unpriced_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Traces without an amount, not counted in `amounts`."
+          },
+          "amounts": {
+            "type": "array",
+            "description": "Summed per currency, never across currencies.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "currency",
+                "amount_minor"
+              ],
+              "properties": {
+                "currency": {
+                  "type": "string"
+                },
+                "amount_minor": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "first_recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TraceSummaryReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "group_by",
+          "total",
+          "truncated",
+          "groups"
+        ],
+        "properties": {
+          "group_by": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "day",
+                "team",
+                "service_account",
+                "model",
+                "deployment",
+                "provider_family",
+                "location",
+                "status",
+                "outcome"
+              ]
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Every matching trace, including groups past the limit."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "More than 500 groups matched; the largest are returned."
+          },
+          "groups": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "$ref": "#/components/schemas/TraceGroup"
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "session": []
+    },
+    {
+      "agentToken": []
+    }
+  ],
+  "paths": {
+    "/api/admin/v1/organizations/{org}/usage": {
+      "get": {
+        "operationId": "getUsageReport",
+        "summary": "Usage aggregates split by currency and confidence",
+        "description": "Permission `usage_read` (owner, admin, operator, auditor, read-only member org-wide; team admin for its teams). Team-scoped actors only see their teams; filtering on another team is 403. Each request is attributed to the window containing its first usage row and measured by its latest usage row, so it lands in exactly one window and consecutive windows can be summed. Audited as `usage.read`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "description": "Inclusive window start.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "description": "Exclusive window end; at most 366 days after `from`.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "description": "One or two distinct dimensions, comma-separated (`team,model` groups by team, then model): `day` (UTC), `team`, `service_account`, `model`, `deployment`, `provider_family`, `location`, `model_master` (the master record the deployment was linked to when the request was served, D-033). Default `day`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "default": "day"
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "description": "One UUID or a comma-separated list (at most 50); matches any. A team admin may list only its own teams. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "query",
+            "required": false,
+            "description": "One UUID or a comma-separated list (at most 50); matches any. A team admin may list only its own teams. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "description": "One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "deployment",
+            "in": "query",
+            "required": false,
+            "description": "One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "provider_family",
+            "in": "query",
+            "required": false,
+            "description": "Catalog provider family, or a comma-separated list; matches any. Unknown families are rejected. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "description": "One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "batch_id",
+            "in": "query",
+            "required": false,
+            "description": "Only the lines of these batches (D-021): one batch id or a comma-separated list (at most 50), each `batch_<uuid>` as the batches API gives it or the bare UUID; matches any.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "model_master",
+            "in": "query",
+            "required": false,
+            "description": "Only requests served by deployments linked to these master records then (D-033): one id or a comma-separated list (at most 50), each a card's id (`anthropic/claude-sonnet-4-6`) or `org/<slug>`; matches any.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "description": "Filter.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "description": "Opaque signed token from `next_page_token`; bound to the actor, filters, and ordering.",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage report.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/usage/series": {
+        "get": {
+          "operationId": "getUsageSeries",
+          "summary": "Requests, tokens and spend over time, sliced",
+          "description": "Permission `usage_read` (owner, admin, operator, auditor, read-only member org-wide; team admin for its teams, whose organization-level requests it does not see). Audited as `usage.read`. A request is its trace with the latest usage recorded for it, counted in the bucket it was admitted in. Filters combine with AND. One response: no paging.",
+          "parameters": [
+            {
+              "name": "org",
+              "in": "path",
+              "required": true,
+              "description": "Organization id.",
+              "schema": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            {
+              "name": "from",
+              "in": "query",
+              "required": true,
+              "description": "Inclusive lower bound on the request's `recorded_at`.",
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            {
+              "name": "to",
+              "in": "query",
+              "required": true,
+              "description": "Exclusive upper bound; at most 366 days after `from`.",
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            {
+              "name": "team_id",
+              "in": "query",
+              "required": false,
+              "description": "One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "service_account_id",
+              "in": "query",
+              "required": false,
+              "description": "One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "api_key_id",
+              "in": "query",
+              "required": false,
+              "description": "API key: One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "user_id",
+              "in": "query",
+              "required": false,
+              "description": "Service account owner: One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "end_user",
+              "in": "query",
+              "required": false,
+              "description": "End user of an app (D-028): the app's own ID for the user, as sent in `Gateway-End-User`. One ID or comma-separated list; matches any. Write `\\,` for comma within value and `\\\\` backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "model",
+              "in": "query",
+              "required": false,
+              "description": "One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "alias",
+              "in": "query",
+              "required": false,
+              "description": "Public model alias: One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "deployment",
+              "in": "query",
+              "required": false,
+              "description": "Deployment label: One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "provider_family",
+              "in": "query",
+              "required": false,
+              "description": "Catalog provider family (unknown families are rejected): one value or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "location",
+              "in": "query",
+              "required": false,
+              "description": "Deployment location: One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "operation",
+              "in": "query",
+              "required": false,
+              "description": "`chat`, `chat_stream`, `embeddings`, `chat_batch`, `embeddings_batch`, comma-separated; matches any.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "description": "`succeeded`, `failed`, `pending`, `expired` (never reached the provider), `unknown` (closed by expiry after a claim) or `failed-over` (an attempt the request left for another deployment of its route), comma-separated; matches any.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "outcome",
+              "in": "query",
+              "required": false,
+              "description": "Accounting outcome: One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "error_category",
+              "in": "query",
+              "required": false,
+              "description": "Provider error category: One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "batch_id",
+              "in": "query",
+              "required": false,
+              "description": "Only the lines of these batches (D-021): one batch id or a comma-separated list (at most 50), each `batch_<uuid>` as the batches API gives it or the bare UUID; matches any.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "model_master",
+              "in": "query",
+              "required": false,
+              "description": "Only requests served by deployments linked to these master records then (D-033): one id or a comma-separated list (at most 50), each a card's id (`anthropic/claude-sonnet-4-6`) or `org/<slug>`; matches any.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "currency",
+              "in": "query",
+              "required": false,
+              "description": "Only requests charged in this ISO 4217 currency.",
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              }
+            },
+            {
+              "name": "granularity",
+              "in": "query",
+              "required": false,
+              "description": "Bucket width: `hour`, `day` (default) or `week` (from Monday), in UTC. At most 744 buckets.",
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "hour",
+                  "day",
+                  "week"
+                ]
+              }
+            },
+            {
+              "name": "split_by",
+              "in": "query",
+              "required": false,
+              "description": "Split into one series per value: `team`, `service_account`, `api_key`, `user`, `model`, `alias`, `deployment`, `provider_family`, `location`, `operation`, `status`, `outcome`, `error_category`. Absent: one series.",
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "team",
+                  "service_account",
+                  "api_key",
+                  "user",
+                  "end_user",
+                  "model",
+                  "alias",
+                  "deployment",
+                  "provider_family",
+                  "location",
+                  "operation",
+                  "status",
+                  "outcome",
+                  "error_category",
+                  "model_master"
+                ]
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "description": "Top values to keep (1 to 20, default 8); the rest are one `other` series.",
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            {
+              "name": "rank_by",
+              "in": "query",
+              "required": false,
+              "description": "`requests` (default), `tokens` (input plus output), or `cost`, which needs `currency`.",
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "requests",
+                  "tokens",
+                  "cost"
+                ]
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Usage series.",
+              "headers": {
+                "Cache-Control": {
+                  "schema": {
+                    "type": "string",
+                    "const": "no-store"
+                  }
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/UsageSeriesReport"
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/BadRequest"
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthenticated"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "503": {
+              "$ref": "#/components/responses/Unavailable"
+            }
+          }
+        }
+      },
+      "/api/admin/v1/organizations/{org}/usage/events": {
+        "get": {
+          "operationId": "listUsageEvents",
+          "summary": "The requests in a usage slice, newest first",
+          "description": "Permission `trace_read`, like the trace list, under the same team clamp; audited as `trace.list`. Takes the series filters. Each item's `id` is its trace id, and `content_state` says whether the trace holds content.",
+          "parameters": [
+            {
+              "name": "org",
+              "in": "path",
+              "required": true,
+              "description": "Organization id.",
+              "schema": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            {
+              "name": "from",
+              "in": "query",
+              "required": true,
+              "description": "Inclusive lower bound on the request's `recorded_at`.",
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            {
+              "name": "to",
+              "in": "query",
+              "required": true,
+              "description": "Exclusive upper bound; at most 366 days after `from`.",
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            {
+              "name": "team_id",
+              "in": "query",
+              "required": false,
+              "description": "One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "service_account_id",
+              "in": "query",
+              "required": false,
+              "description": "One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "api_key_id",
+              "in": "query",
+              "required": false,
+              "description": "API key: One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "user_id",
+              "in": "query",
+              "required": false,
+              "description": "Service account owner: One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "end_user",
+              "in": "query",
+              "required": false,
+              "description": "End user of an app (D-028): the app's own ID for the user, as sent in `Gateway-End-User`. One ID or comma-separated list; matches any. Write `\\,` for comma within value and `\\\\` backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "model",
+              "in": "query",
+              "required": false,
+              "description": "One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "alias",
+              "in": "query",
+              "required": false,
+              "description": "Public model alias: One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "deployment",
+              "in": "query",
+              "required": false,
+              "description": "Deployment label: One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "provider_family",
+              "in": "query",
+              "required": false,
+              "description": "Catalog provider family (unknown families are rejected): one value or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "location",
+              "in": "query",
+              "required": false,
+              "description": "Deployment location: One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "operation",
+              "in": "query",
+              "required": false,
+              "description": "`chat`, `chat_stream`, `embeddings`, `chat_batch`, `embeddings_batch`, comma-separated; matches any.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "description": "`succeeded`, `failed`, `pending`, `expired` (never reached the provider), `unknown` (closed by expiry after a claim) or `failed-over` (an attempt the request left for another deployment of its route), comma-separated; matches any.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "outcome",
+              "in": "query",
+              "required": false,
+              "description": "Accounting outcome: One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "error_category",
+              "in": "query",
+              "required": false,
+              "description": "Provider error category: One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "batch_id",
+              "in": "query",
+              "required": false,
+              "description": "Only the lines of these batches (D-021): one batch id or a comma-separated list (at most 50), each `batch_<uuid>` as the batches API gives it or the bare UUID; matches any.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "model_master",
+              "in": "query",
+              "required": false,
+              "description": "Only requests served by deployments linked to these master records then (D-033): one id or a comma-separated list (at most 50), each a card's id (`anthropic/claude-sonnet-4-6`) or `org/<slug>`; matches any.",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "name": "currency",
+              "in": "query",
+              "required": false,
+              "description": "Only requests charged in this ISO 4217 currency.",
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              }
+            },
+            {
+              "name": "page_size",
+              "in": "query",
+              "required": false,
+              "description": "1 to 100; default 50.",
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            },
+            {
+              "name": "page_token",
+              "in": "query",
+              "required": false,
+              "description": "Opaque token from `next_page_token`; bound to the actor, organization and filters.",
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Usage event page.",
+              "headers": {
+                "Cache-Control": {
+                  "schema": {
+                    "type": "string",
+                    "const": "no-store"
+                  }
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/UsageEventPage"
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/BadRequest"
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthenticated"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "503": {
+              "$ref": "#/components/responses/Unavailable"
+            }
+          }
+        }
+      },
+    "/api/admin/v1/organizations/{org}/traces": {
+      "get": {
+        "operationId": "listTraces",
+        "summary": "Trace summaries, newest first",
+        "description": "Permission `trace_read` (owner, admin, operator, auditor org-wide; team admin for its teams). Audited as `trace.list`. Filters combine with AND.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Inclusive lower bound on `recorded_at`.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Exclusive upper bound on `recorded_at`.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "description": "One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "query",
+            "required": false,
+            "description": "One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },          {
+            "name": "api_key_id",
+            "in": "query",
+            "required": false,
+            "description": "API key: one UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "end_user",
+            "in": "query",
+            "required": false,
+            "description": "End user (the app’s own id, as sent in `Gateway-End-User`): one or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "description": "One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "deployment",
+            "in": "query",
+            "required": false,
+            "description": "Deployment label: one value or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "provider_family",
+            "in": "query",
+            "required": false,
+            "description": "Catalog provider family (unknown families are rejected): one value or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "description": "Deployment location: one value or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "`pending`, `finalized`, or both comma-separated.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "required": false,
+            "description": "Trace outcome: one value or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "batch_id",
+            "in": "query",
+            "required": false,
+            "description": "Only the lines of these batches (D-021): one batch id or a comma-separated list (at most 50), each `batch_<uuid>` as the batches API gives it or the bare UUID; matches any.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Case-insensitive substring of the model or deployment, or a trace id or request (correlation) id.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "description": "Opaque signed token from `next_page_token`; bound to the actor, filters, and ordering.",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trace page.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/traces/summary": {
+      "get": {
+        "operationId": "summarizeTraces",
+        "summary": "Traces counted by one or two dimensions",
+        "description": "Permission `trace_read`, under the same team clamp as the list. Takes the list filters plus `group_by`; no paging. Audited as `trace.list`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Inclusive lower bound on `recorded_at`.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Exclusive upper bound on `recorded_at`.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "description": "One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "service_account_id",
+            "in": "query",
+            "required": false,
+            "description": "One UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },          {
+            "name": "api_key_id",
+            "in": "query",
+            "required": false,
+            "description": "API key: one UUID or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "end_user",
+            "in": "query",
+            "required": false,
+            "description": "End user (the app’s own id, as sent in `Gateway-End-User`): one or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "description": "One value or a comma-separated list (each 1 to 255 characters, at most 50); matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "deployment",
+            "in": "query",
+            "required": false,
+            "description": "Deployment label: one value or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "provider_family",
+            "in": "query",
+            "required": false,
+            "description": "Catalog provider family (unknown families are rejected): one value or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "description": "Deployment location: one value or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "`pending`, `finalized`, or both comma-separated.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "required": false,
+            "description": "Trace outcome: one value or a comma-separated list; matches any. Write `\\,` for a comma within a value and `\\\\` for a backslash.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "batch_id",
+            "in": "query",
+            "required": false,
+            "description": "Only the lines of these batches (D-021): one batch id or a comma-separated list (at most 50), each `batch_<uuid>` as the batches API gives it or the bare UUID; matches any.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Case-insensitive substring of the model or deployment, or a trace id or request (correlation) id.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": true,
+            "description": "One or two distinct dimensions, comma-separated: `day` (UTC), `team`, `service_account`, `model`, `deployment`, `provider_family`, `location`, `status`, `outcome`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Groups, largest first.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceSummaryReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/traces/{id}": {
+      "get": {
+        "operationId": "getTrace",
+        "summary": "Metadata-only trace detail",
+        "description": "Permission `trace_read`. A trace outside the actor's tenant or teams is 404. Audited as `trace.read`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Trace id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trace detail.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/reconciliation-items": {
+      "get": {
+        "operationId": "listReconciliationItems",
+        "summary": "Reconciliation work queue, oldest first",
+        "description": "Permission `reconciliation_read` (owner, admin, operator, auditor; organization-wide only). Audited as `reconciliation.list`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Filter.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "resolved",
+                "all"
+              ],
+              "default": "open"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "description": "Opaque signed token from `next_page_token`; bound to the actor, filters, and ordering.",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reconciliation page.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/reconciliation-items/{id}/resolve": {
+      "post": {
+        "operationId": "resolveReconciliationItem",
+        "summary": "Resolve an open reconciliation item",
+        "description": "Permission `reconciliation_resolve` (owner, admin; organization-wide only). Audited as `reconciliation_item.resolve`. Settles the item's `unknown` reservation for `amount_minor`: the quota it holds is released, the amount is charged to the same budgets, and a final `estimated` usage row records the charge with the latest observed token counts. The trace is finalized with outcome `operator-resolved` and the charged amount. The item's first resolution creates version 1, so `If-Match` is `*` or `\"v1\"`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Reconciliation item id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*`, or `\"v1\"` for an item not yet resolved.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconciliationResolution"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved, or an idempotent replay of the recorded response.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "Resource version, `\"v{version}\"`.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"v[0-9]+\"$"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "`reconciliation_not_open` (already resolved, or its reservation is no longer unknown), `reconciliation_busy` (the reservation is being settled; retry), `version_conflict` (stale `If-Match`), `idempotency_conflict`, or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "`request_body_invalid`: body is not `application/json`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_amount`: `amount_minor` is negative; `request_body_unprocessable`: unknown field or wrong type.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    }
+  }
+}

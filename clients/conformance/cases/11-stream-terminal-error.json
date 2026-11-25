@@ -1,0 +1,64 @@
+{
+  "name": "stream_terminal_error",
+  "description": "A terminal error event ends the stream as an error with its code and status, after the events before it.",
+  "operation": "chat_stream",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions/stream",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-stream-1",
+        "cache-control": "no-store"
+      },
+      "sse": "stream-provider-error.sse"
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "events": [
+      {
+        "event": "response.started",
+        "data": {}
+      },
+      {
+        "event": "choice.delta",
+        "data": {
+          "content_delta": "partial"
+        }
+      }
+    ],
+    "error": {
+      "kind": "stream",
+      "code": "provider_failure",
+      "status": 502
+    }
+  }
+}

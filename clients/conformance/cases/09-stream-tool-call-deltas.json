@@ -1,0 +1,83 @@
+{
+  "name": "stream_tool_call_deltas",
+  "description": "Tool-call deltas carry an id and name only in their first delta; later ones send null.",
+  "operation": "chat_stream",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions/stream",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "headers": {
+        "x-request-id": "req-stream-1",
+        "cache-control": "no-store"
+      },
+      "sse": "stream-tool-call.sse"
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "events": [
+      {
+        "event": "response.started",
+        "data": {}
+      },
+      {
+        "event": "tool_call.delta",
+        "data": {
+          "tool_call_index": 0,
+          "id": "call_1",
+          "name": "lookup",
+          "arguments_delta": "{\"q\":"
+        }
+      },
+      {
+        "event": "tool_call.delta",
+        "data": {
+          "tool_call_index": 0,
+          "id": null,
+          "name": null,
+          "arguments_delta": "\"x\"}"
+        }
+      },
+      {
+        "event": "choice.finished",
+        "data": {
+          "finish_reason": "tool_calls"
+        }
+      },
+      {
+        "event": "response.completed",
+        "data": {
+          "usage": null
+        }
+      }
+    ]
+  }
+}

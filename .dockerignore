@@ -1,0 +1,19 @@
+# Only what the images build from reaches the build context.
+target
+.git
+.github
+.worktrees
+.slim
+.serena
+.claude
+.cargo
+.env
+.env.*
+!.env.example
+**/node_modules
+**/dist
+apps/docs
+docs
+tests
+openapi
+scripts

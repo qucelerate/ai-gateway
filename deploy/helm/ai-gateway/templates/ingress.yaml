@@ -1,0 +1,39 @@
+{{- if and .Values.controlPlane.enabled .Values.ingress.enabled }}
+# One origin for the admin UI and the gateway: /api and /healthz go to the
+# gateway, everything else to the admin UI.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "gateway.name" . }}
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ required "host is required: the browser-visible host of the gateway" .Values.host | quote }}]
+      secretName: {{ .Values.ingress.tlsSecretName }}
+  rules:
+    - host: {{ required "host is required: the browser-visible host of the gateway" .Values.host | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "gateway.name" . }}-api
+                port: {name: http}
+          - path: /healthz
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "gateway.name" . }}-api
+                port: {name: http}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "gateway.name" . }}-admin
+                port: {name: http}
+{{- end }}

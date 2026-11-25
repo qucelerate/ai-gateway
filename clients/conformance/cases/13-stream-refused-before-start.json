@@ -1,0 +1,61 @@
+{
+  "name": "stream_refused_before_start",
+  "description": "A stream refused before it starts returns a Problem, as a non-stream call does.",
+  "operation": "chat_stream",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions/stream",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 404,
+      "headers": {
+        "x-request-id": "req-404"
+      },
+      "json": {
+        "type": "https://gateway.invalid/problems/model_unavailable",
+        "code": "model_unavailable",
+        "title": "error",
+        "status": 404,
+        "detail": "detail",
+        "instance": "/api/inference/v1/chat/completions/stream",
+        "request_id": "req-404"
+      }
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "events": [],
+    "error": {
+      "kind": "problem",
+      "status": 404,
+      "code": "model_unavailable",
+      "request_id": "req-404"
+    }
+  }
+}

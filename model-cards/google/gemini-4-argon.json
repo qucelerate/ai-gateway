@@ -1,0 +1,92 @@
+{
+  "schema": "qucelerate.model-card.v1",
+  "id": "google/gemini-4-argon",
+  "name": "Gemini 4 Argon",
+  "vendor": "Google",
+  "matches": {
+    "gemini": [
+      "gemini-4-argon"
+    ]
+  },
+  "overview": {
+    "release_date": {
+      "value": "2026-10-13",
+      "source_url": "https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/4-argon",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "family": {
+      "value": "Gemini 4",
+      "source_url": "https://deepmind.google/models/model-cards/gemini-4-argon/",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_in": {
+      "value": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "source_url": "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "modalities_out": {
+      "value": [
+        "text"
+      ],
+      "source_url": "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "context_window_tokens": {
+      "value": 1048576,
+      "source_url": "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "max_output_tokens": {
+      "value": "65,536 (default synchronous) / up to 1,048,576 (with long decode)",
+      "source_url": "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "knowledge_cutoff": {
+      "value": "March 2026",
+      "source_url": "https://deepmind.google/models/model-cards/gemini-4-argon/",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "retirement": {
+      "value": "October 13, 2027 or later",
+      "source_url": "https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/4-argon",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    }
+  },
+  "evaluations": [],
+  "safety": {
+    "model_card_url": {
+      "value": "https://deepmind.google/models/model-cards/gemini-4-argon/",
+      "source_url": "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "Gemini 4 Argon model card"
+    },
+    "acceptable_use_url": {
+      "value": "https://policies.google.com/terms/generative-ai/use-policy",
+      "source_url": "https://deepmind.google/models/model-cards/gemini-4-argon/",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "Generative AI Prohibited Use Policy"
+    },
+    "known_limitations": {
+      "value": "Gemini 4 Argon may exhibit some of the general limitations of foundation models, such as hallucinations. There may also be occasional slowness or timeout issues. The knowledge cutoff for Gemini 4 is March 2026, but in some domains the model's knowledge may be less up to date.",
+      "source_url": "https://deepmind.google/models/model-cards/gemini-4-argon/",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    }
+  }
+}

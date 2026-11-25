@@ -1,0 +1,699 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin identity provider API",
+    "version": "1.0.0",
+    "description": "An organization may sign its people in through its own OpenID Connect provider (Entra ID, Okta, Google Workspace, …) instead of the gateway's process-wide one. People choose it by naming their organization at sign-in (`GET /api/admin/v1/oidc/start?organization={slug}`); there is no email-domain discovery. A person is still identified by `(issuer, subject)`: someone who signs in through two issuers is two users, and accounts are never linked by email.\n\nSaving stores a **pending** configuration; the active one (or the process-wide provider) keeps serving sign-in until the owner who saved it completes a test sign-in through it (`POST …/identity-provider/test`), which activates it. Every change goes through a test, so a wrong value cannot lock anyone out. Disabling falls back to the process-wide provider and ends the sessions that came through the organization's provider; it deletes no user, membership or configuration.\n\nA session from the organization's provider acts only in that organization: other organizations answer `404`, and admin routes outside an organization (other than `me`, `organizations`, `context` and `logout`) answer `403 organization_session_scope`.\n\nThe issuer must be https on a public host name and not the gateway's own `OIDC_ISSUER`; discovery, keys and the token request reach only public addresses, and the discovery document must name the issuer exactly. The client secret is write-only: it is sealed with the credential-encryption key and never returned, logged, audited or kept in an idempotency record. Without that key, writes answer `503 credential_encryption_unavailable`.\n\nPermissions are organization-wide only: `identity_provider_read` (owner, admin, auditor) and `identity_provider_write` (owner). Authenticated with a session cookie or an agent token (`Authorization: Bearer gwa_…`), which acts only in its agent's organization; API keys never reach these routes."
+  },
+  "security": [
+    {
+      "session": []
+    },
+    {
+      "agentToken": []
+    }
+  ],
+  "paths": {
+    "/api/admin/v1/organizations/{org}/identity-provider": {
+      "get": {
+        "operationId": "getIdentityProvider",
+        "summary": "Read the organization's identity provider",
+        "description": "Permission `identity_provider_read` (owner, admin, auditor; org-wide only). Not audited. The active and pending configurations, never the secret (`client_secret_set` says whether one is stored), the status, the last successful test, and the redirect URI to register with the provider. An organization that never saved one answers `status: \"not_configured\"`, `version: 0` and no `ETag`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The provider.",
+            "headers": {
+              "ETag": {
+                "description": "`\"v{version}\"`, for `If-Match`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProvider"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveIdentityProvider",
+        "summary": "Save a pending configuration",
+        "description": "Permission `identity_provider_write` (owner; org-wide only). Audited as `identity_provider.created` (first save) or `identity_provider.updated`. Stores a new configuration as **pending**; it takes effect only after a successful test sign-in by the owner who saved it. A pending configuration saved earlier is replaced. `client_secret` is required for the first save and whenever the issuer or client ID changes; left out otherwise, the current secret is kept. The secret is never returned, and the idempotency record holds only a keyed digest of it.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`*` (or `\"v0\"`) to create; to change an existing provider, its current `ETag` (`*` is refused with `version_conflict`).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityProviderInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created, pending its test.",
+            "headers": {
+              "ETag": {
+                "description": "`\"v{version}\"`, for `If-Match`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProvider"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Saved, pending its test; or an idempotent replay of the original response.",
+            "headers": {
+              "ETag": {
+                "description": "`\"v{version}\"`, for `If-Match`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProvider"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "description": "`invalid_identity_provider`: the detail says which field and why; or `request_body_unprocessable` (unknown fields).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "`if_match_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`credential_encryption_unavailable`, `service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "disableIdentityProvider",
+        "summary": "Disable it",
+        "description": "Permission `identity_provider_write` (owner; org-wide only). Audited as `identity_provider.disabled`. Sign-in to the organization falls back to the process-wide provider at once, sessions that came through the organization's provider end, and a pending configuration is dropped. Users, memberships and saved configurations are kept; saving and testing again turns it back on.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-chosen key. A retry with the same key and request replays the stored outcome; a different request under the same key is `idempotency_conflict`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The current `ETag`, or `*`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disabled; the provider as it now stands.",
+            "headers": {
+              "ETag": {
+                "description": "`\"v{version}\"`, for `If-Match`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProvider"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WriteBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "`not_found`: the organization has no identity provider.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "`if_match_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/identity-provider/test": {
+      "post": {
+        "operationId": "testIdentityProvider",
+        "summary": "Start the test sign-in that activates the pending configuration",
+        "description": "Permission `identity_provider_write` (owner; org-wide only), and only the owner who saved the pending configuration. Returns the provider's authorization URL; the browser goes there and signs in. When the provider sends it back to `/api/admin/v1/oidc/callback`, the ID token is validated against the pending configuration (issuer, audience, signature, nonce, expiry) and, if it is still the pending one at the version the test started from and the callback carries the same owner's session, it is activated and audited as `identity_provider.activated` in one transaction. The test signs nobody in and provisions nobody. The browser is then sent to `/admin/organization?organization={org}&sign_in_test={outcome}`: `activated`, or why not (`identity_provider_changed`, `provider_test_session_required`, `oidc_backend_rejected`, `oidc_backend_unavailable`, `claim_validation_failed`, `forbidden`, …). No body; `Idempotency-Key` is not used. Browser only: it needs the admin UI's CSRF token and ends in a sign-in, so an agent token is refused.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "description": "The value of the `__Host-gateway_csrf` cookie. The request must also carry the gateway's own `Origin`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The URL to send the browser to.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "authorization_url"
+                  ],
+                  "properties": {
+                    "authorization_url": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "description": "`forbidden`, or `csrf_origin_or_token_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`nothing_to_test`: no pending configuration; or `tested_by_another_owner`: another owner saved it, and only they can test it.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`oidc_provider_unavailable` (discovery failed or the provider is not on a public address), `credential_encryption_unavailable`, `oidc_disabled`, `auth_store_unavailable` or `authentication_unavailable`. These answer `{\"error\": code}` when they come from the sign-in machinery.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_…",
+        "description": "An agent token (`Authorization: Bearer gwa_…`), for automation: it acts as its agent, only in the agent's organization, with the agent's role. Created with `POST /api/admin/v1/organizations/{org}/agents/{agent_id}/tokens` or, on the server, `gateway agent create`."
+      }
+    },
+    "responses": {
+      "Unauthenticated": {
+        "description": "`authentication_required`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "`forbidden`: the actor lacks the required permission for the organization.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "`service_unavailable` or `authentication_unavailable`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "WriteBadRequest": {
+        "description": "`idempotency_key_required`, `idempotency_key_invalid`, `if_match_invalid`, or a malformed JSON body (`request_body_invalid`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "`request_body_invalid`: the body is not `application/json`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "IdentityProviderInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "issuer",
+          "client_id"
+        ],
+        "properties": {
+          "issuer": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Exactly as the provider's discovery document states it: https, a public host name, no user name, password, query or fragment, and not the gateway's own `OIDC_ISSUER`. Kept as given (a trailing slash matters)."
+          },
+          "client_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "The gateway's client (application) ID at the provider; ID tokens must name it as their audience."
+          },
+          "client_secret": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "writeOnly": true,
+            "description": "Required for the first save and whenever the issuer or client ID changes; left out otherwise to keep the current one. Never returned."
+          },
+          "extra_scopes": {
+            "type": "array",
+            "maxItems": 10,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "description": "Requested besides `openid profile email` (which may not be repeated here)."
+          }
+        }
+      },
+      "Configuration": {
+        "type": "object",
+        "required": [
+          "configuration_version",
+          "issuer",
+          "client_id",
+          "client_secret_set",
+          "extra_scopes",
+          "created_at",
+          "created_by",
+          "tested_at"
+        ],
+        "properties": {
+          "configuration_version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Increases with every save."
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "client_secret_set": {
+            "type": "boolean",
+            "description": "Whether a secret is stored. The secret itself is never returned."
+          },
+          "extra_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "tested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When its test sign-in activated it."
+          }
+        }
+      },
+      "IdentityProvider": {
+        "type": "object",
+        "required": [
+          "status",
+          "enabled",
+          "active",
+          "pending",
+          "last_tested_at",
+          "last_tested_by",
+          "redirect_uri",
+          "version"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_configured",
+              "pending",
+              "active",
+              "active_with_pending_change",
+              "disabled"
+            ],
+            "description": "`not_configured`: never saved. `pending`: a saved configuration waits for its test sign-in; sign-in uses the process-wide provider. `active`: sign-in uses the active configuration. `active_with_pending_change`: the active configuration serves sign-in while a saved change waits for its test. `disabled`: saved, then disabled; sign-in uses the process-wide provider."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether sign-in to the organization goes through the active configuration."
+          },
+          "active": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Configuration"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The configuration sign-in uses (or last used, when disabled)."
+          },
+          "pending": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Configuration"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A saved configuration waiting for its test sign-in."
+          },
+          "last_tested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_tested_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "redirect_uri": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "description": "Register exactly this with the provider (the gateway's `OIDC_REDIRECT_URI`, the same for every provider)."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The resource version (also the `ETag`); 0 before the first save."
+          }
+        }
+      }
+    }
+  }
+}

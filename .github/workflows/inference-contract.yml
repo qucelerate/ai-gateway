@@ -1,0 +1,81 @@
+name: Inference contract
+
+# The inference API is stable at 1.0.0 (its frozen baseline is openapi/baselines/).
+# Every change must keep the generated artifact in sync, pass the contract
+# tests, and stay compatible with the frozen 1.0.0 baseline.
+
+on:
+  push:
+    # main only: a pull request runs this for its branch.
+    branches: [main]
+    paths:
+      - "openapi/inference-v1*.json"
+      - "openapi/baselines/**"
+      - "openapi/fixtures/**"
+      - "openapi/generate.py"
+      - "openapi/test_generate.py"
+      - "openapi/sse_as_operations.py"
+      - "clients/conformance/**"
+      - ".github/workflows/inference-contract.yml"
+  pull_request:
+    paths:
+      - "openapi/inference-v1*.json"
+      - "openapi/baselines/**"
+      - "openapi/fixtures/**"
+      - "openapi/generate.py"
+      - "openapi/test_generate.py"
+      - "openapi/sse_as_operations.py"
+      - "clients/conformance/**"
+      - ".github/workflows/inference-contract.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inference-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Check the generated artifact is current
+        run: python3 openapi/generate.py --check
+
+      - name: Run contract tests
+        run: python3 -m unittest openapi/test_generate.py
+
+      - name: Validate the client conformance suite
+        run: |
+          python3 clients/conformance/validate.py
+          python3 -m unittest clients/conformance/test_validate.py
+
+      # The baseline is the published 1.0.0 contract. It never changes; a
+      # breaking change belongs in a new URL version with its own baseline.
+      - name: Check the 1.0.0 baseline is untouched
+        run: |
+          echo "34c91db4c8269b163ef80e88bfe3e41bbf1fe3d2798e55d26499541b4656bc82  openapi/baselines/inference-v1.0.0.json" | sha256sum -c -
+
+      - name: Check for breaking changes against 1.0.0
+        env:
+          OASDIFF_VERSION: 1.35.0
+          OASDIFF_SHA256: a8023002fcb2eaa7f5758148a9303cb63d33b939886df312268bc0fc7b939140
+        run: |
+          archive="oasdiff_${OASDIFF_VERSION}_linux_amd64.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" \
+            "https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}/$archive"
+          echo "$OASDIFF_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" oasdiff
+          # SSE event payloads are named only in x-sse-events, which oasdiff
+          # does not follow; compare copies that also expose each event as a
+          # synthetic JSON operation (every real path is kept as it is).
+          python3 openapi/sse_as_operations.py \
+            openapi/baselines/inference-v1.0.0.json "$RUNNER_TEMP/baseline.json"
+          python3 openapi/sse_as_operations.py \
+            openapi/inference-v1.json "$RUNNER_TEMP/current.json"
+          "$RUNNER_TEMP/oasdiff" breaking \
+            "$RUNNER_TEMP/baseline.json" "$RUNNER_TEMP/current.json" \
+            --fail-on ERR

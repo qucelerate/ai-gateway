@@ -1,0 +1,4966 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gateway admin model cards API",
+    "version": "1.0.0",
+    "description": "Model cards (the architecture docs): one catalog model's card, built from what the gateway already knows about it: the deployments that serve it and their prices, availability evidence, this organization's usage and how its requests went, and the catalog activations that changed it. Curated public facts come from card files shipped with the gateway and the operator's `GATEWAY_MODEL_CARDS_DIR`, joined by an exact model identifier per provider family; every fact names its source, its retrieval date and who reported it. A model no card file matches has `public_card.status` `not_on_file`. Responses carry `Cache-Control: no-store`. Errors are `application/problem+json`. The organization's own evaluation sets and runs (`/catalog/evaluation-sets`) score models from completed batches; a card shows each set's latest score for its model. Master model records (`/catalog/model-masters`) group deployments of one model across providers: a card's id, matched exactly, or the organization's own link or record; route proposals built from them reach routing only through a release."
+  },
+  "security": [
+    {
+      "session": []
+    },
+    {
+      "agentToken": []
+    }
+  ],
+  "paths": {
+    "/api/admin/v1/organizations/{org}/catalog/models/{model}/card": {
+      "get": {
+        "operationId": "getModelCard",
+        "summary": "A catalog model's card",
+        "description": "Permission `catalog_read` (owner, admin, operator, auditor, read-only member; org-wide only). `usage` needs `usage_read` and is clamped to the teams the caller may read; when it is present the read is audited as `usage.read`, and the card is not returned if that audit event cannot be written. `governance` needs `audit_read` (owner, admin, auditor). Not found when there is no active release or it does not serve the model.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "The catalog model identifier, exactly as deployments name it, percent-encoded (`us.amazon.nova-2-lite-v1%3A0`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The card.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_model`: empty, longer than 255 bytes, or with control characters.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_read`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no active release, or it does not serve the model.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/catalog/model-cards": {
+      "get": {
+        "operationId": "listModelCards",
+        "summary": "Card facts of every catalog model",
+        "description": "Every model the active release serves, by model identifier, with the facts the Models table's columns show: the matching card file and its context window, maximum output and retirement facts, and the earliest retirement date a provider listing gives its deployments. Needs `catalog_read`. Not paged: one item per model of the release.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The models.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCardSummaryList"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_read`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/catalog/models/{model}/card/note": {
+      "get": {
+        "operationId": "getModelCardNote",
+        "summary": "The organization's note on a model",
+        "description": "Needs `catalog_read`. The `ETag` is the note's version.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "The catalog model identifier, exactly as deployments name it, percent-encoded (`us.amazon.nova-2-lite-v1%3A0`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The note.",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardNote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_model`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_read`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no note was ever set on this model.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setModelCardNote",
+        "summary": "Set the organization's note on a model",
+        "description": "Replaces the note (an empty note clears it; every earlier text is kept). The model need not be served by the active release, so a note outlives a release that drops it. Needs `catalog_write`, `Idempotency-Key` and `If-Match` (`*` for any state); audited as `model_card_note.set`, without the text.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "The catalog model identifier, exactly as deployments name it, percent-encoded (`us.amazon.nova-2-lite-v1%3A0`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "note"
+                ],
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "description": "Trimmed; at most 4000 characters, without control characters other than newlines and tabs."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replaced (or replayed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardNote"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardNote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_model`, a missing `Idempotency-Key`, or an invalid `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_write`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_note`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "`if_match_required`: no `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/catalog/models/{model}/card/import": {
+      "get": {
+        "operationId": "getModelCardImport",
+        "summary": "The card imported for a model",
+        "description": "Needs `catalog_read`. The `ETag` is the import's version.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "The catalog model identifier, exactly as deployments name it, percent-encoded (`us.amazon.nova-2-lite-v1%3A0`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The import.",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardImport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_model`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_read`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: nothing is imported for the model.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "importModelCard",
+        "summary": "Import a model's card from the Hugging Face Hub",
+        "description": "Reads `GET {hub}/api/models/{repository}` (the operator's `GATEWAY_MODEL_CARD_HUB_URL`, through the egress checks webhooks use: https, public addresses, no redirects, at most 1 MiB in 10 s) and stores the card it makes, replacing an earlier import. The card is shown for the model only while no card file matches it. The model need not be served by the active release. Needs `catalog_write`, `Idempotency-Key` and `If-Match` (`*` for any state); audited as `model_card_import.set`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "The catalog model identifier, exactly as deployments name it, percent-encoded (`us.amazon.nova-2-lite-v1%3A0`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "repository",
+                  "provider_repository"
+                ],
+                "properties": {
+                  "repository": {
+                    "type": "string",
+                    "description": "`owner/name`, each part 1 to 96 letters, digits, `-`, `_` or `.`."
+                  },
+                  "provider_repository": {
+                    "type": "boolean",
+                    "description": "Whether the repository is the model provider's own (`openai/gpt-oss-120b`), not a third party's copy."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replaced (or replayed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardImport"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Imported.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardImport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_repository`, `repository_not_found` (no public repository by that id) or `import_unusable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`hub_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_model`, a missing `Idempotency-Key`, or an invalid `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_write`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`; `import_disabled` when the operator has not set `GATEWAY_MODEL_CARD_HUB_URL`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "`if_match_required`: no `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeModelCardImport",
+        "summary": "Remove a model's imported card",
+        "description": "Hides the import (the record and every earlier import are kept). Needs `catalog_write`, `Idempotency-Key` and `If-Match`; audited as `model_card_import.set`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "The catalog model identifier, exactly as deployments name it, percent-encoded (`us.amazon.nova-2-lite-v1%3A0`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "404": {
+            "description": "`not_found`: nothing is imported for the model.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_model`, a missing `Idempotency-Key`, or an invalid `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_write`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`; `import_disabled` when the operator has not set `GATEWAY_MODEL_CARD_HUB_URL`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "`if_match_required`: no `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/catalog/evaluation-sets": {
+      "get": {
+        "operationId": "listEvaluationSets",
+        "summary": "The organization's evaluation sets",
+        "description": "Newest first, at most 200. Needs `catalog_read`. Deleted sets are not listed.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EvaluationSet"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createEvaluationSet",
+        "summary": "Create an evaluation set",
+        "description": "A set cannot change once made: create another. Needs `catalog_write` and `Idempotency-Key`; audited as `model_evaluation_set.create` (without the items).",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "items"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 1000,
+                    "items": {
+                      "$ref": "#/components/schemas/EvaluationItem"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replayed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSet"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The set's version, for `If-Match` on a delete.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSet"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The set's version, for `If-Match` on a delete.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A missing `Idempotency-Key`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_write`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_evaluation_set`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/catalog/evaluation-sets/{set}": {
+      "get": {
+        "operationId": "getEvaluationSet",
+        "summary": "One evaluation set",
+        "description": "Needs `catalog_read`. A deleted set is not found.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "set",
+            "in": "path",
+            "required": true,
+            "description": "Evaluation set id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSet"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The set's version, for `If-Match` on a delete.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteEvaluationSet",
+        "summary": "Delete an evaluation set",
+        "description": "Deletes the set softly: it leaves lists, reads and model cards, and takes no more runs, while its items, runs and scores are kept. Needs `catalog_write`, `Idempotency-Key` and `If-Match` (the set's `ETag`, or `*`); audited as `model_evaluation_set.delete`. A retry with the same key answers 204 again.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "set",
+            "in": "path",
+            "required": true,
+            "description": "Evaluation set id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "description": "A missing `Idempotency-Key`, or an invalid `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_write`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no such set, or it is already deleted.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "`if_match_required`: no `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/catalog/evaluation-sets/{set}/runs": {
+      "get": {
+        "operationId": "listEvaluationRuns",
+        "summary": "A set's runs",
+        "description": "Newest first, at most 200, with each model's score. Needs `catalog_read`. A deleted set is not found.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "set",
+            "in": "path",
+            "required": true,
+            "description": "Evaluation set id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The runs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EvaluationRun"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no such set.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createEvaluationRun",
+        "summary": "Score a set from a completed batch",
+        "description": "Reads the output and error files of the organization's completed chat batch `batch_id` (any service account's), takes each line's item from its `custom_id` (before the first `:`) and its model from the deployment it ran on, matches the first choice's message text against the item, and stores each model's counts; answers are not stored. Needs `catalog_write` and `Idempotency-Key`; audited as `model_evaluation_run.create`. A deleted set is not found.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "set",
+            "in": "path",
+            "required": true,
+            "description": "Evaluation set id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "batch_id"
+                ],
+                "properties": {
+                  "batch_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "The batch's id as the batches APIs give it (`batch_<uuid>`), or the bare UUID."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replayed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRun"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Scored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A missing `Idempotency-Key`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_write`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no such set.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`batch_unusable` (not completed, not a chat batch, or its output deleted by retention), `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`batch_not_found`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`file_store_unavailable`, `service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/catalog/model-masters": {
+      "get": {
+        "operationId": "listModelMasters",
+        "summary": "Master model records and their deployments",
+        "description": "Every master record (each model card, and the organization's own records) with its linked deployments in the active release, side by side: provider, account, location, price per operation, limits, tool calling, availability and the aliases that route to each. Deployments with no master are listed apart, and so is every link the organization has set. A deployment's master is the organization's link for its family and model when one is set, else the card that lists them exactly, else none; nothing is matched by name similarity. Needs `catalog_read`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MasterList"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_read`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/catalog/model-masters/{master}": {
+      "get": {
+        "operationId": "getModelMaster",
+        "summary": "One master record",
+        "description": "A card or organization record with its linked deployments in the active release. An organization record's `ETag` is its version. Needs `catalog_read`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "master",
+            "in": "path",
+            "required": true,
+            "description": "A master id, percent-encoded: a model card's id (`anthropic%2Fclaude-sonnet-4-6`) or an organization record's (`org%2Fqwen-local`).",
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MasterRecord"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_master`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_read`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no card or organization record has that id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putOrganizationMaster",
+        "summary": "Create or change an organization record",
+        "description": "Creates the organization's own record `org/<slug>` for a model no card covers (`If-Match: \"v0\"`), renames it or changes its modality (its version), or brings back a deleted one (at its next version: `If-Match: \"v<version>\"` with the version `deleted_records` in the list gives). Changing the modality while links name the record is refused. Needs `catalog_write`, `Idempotency-Key` and `If-Match`; audited as `model_master.set`. Card ids are not written here.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "master",
+            "in": "path",
+            "required": true,
+            "description": "A master id, percent-encoded: a model card's id (`anthropic%2Fclaude-sonnet-4-6`) or an organization record's (`org%2Fqwen-local`).",
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`\"v0\"` when the resource is new, its current version (`\"v3\"`) after, or `*` for any state.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "description": "Trimmed; without control characters."
+                  },
+                  "modality": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Modality"
+                      }
+                    ],
+                    "description": "`chat` when absent."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Changed (or replayed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMaster"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMaster"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_master` (not `org/<slug>`), a missing `Idempotency-Key`, or an invalid `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_write`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`master_in_use` (a modality change while links name it), `version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_name`, or an unknown `modality`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "`if_match_required`: no `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteOrganizationMaster",
+        "summary": "Delete an organization record",
+        "description": "Hides the record; it and every earlier state are kept. Refused while links name it: clear or change them first. Needs `catalog_write`, `Idempotency-Key` and `If-Match`; audited as `model_master.delete`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "master",
+            "in": "path",
+            "required": true,
+            "description": "A master id, percent-encoded: a model card's id (`anthropic%2Fclaude-sonnet-4-6`) or an organization record's (`org%2Fqwen-local`).",
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`\"v0\"` when the resource is new, its current version (`\"v3\"`) after, or `*` for any state.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "description": "`invalid_master`, a missing `Idempotency-Key`, or an invalid `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_write`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no such record, or it is already deleted.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`master_in_use`, `version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "`if_match_required`: no `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/catalog/model-masters/{master}/route-proposal": {
+      "get": {
+        "operationId": "proposeModelMasterRoute",
+        "summary": "Propose a route across providers",
+        "description": "Read-only. For each operation, every deployment of the active release linked to the master that serves it, at weight 1 and priority 1, and every one left out with a machine-readable reason. The rules are the catalog's own (one currency per route; tool calling only where every deployment takes tools and their call ids agree; the routing policy; availability), and the proposal is checked as the active release with the alias's routes of these operations replaced would be when published (`problem`). An alias the active release routes already is shown as a diff (`changes`), never replaced silently. Nothing reaches routing until a release with the routes is created and activated (`POST .../catalog/releases`, then `.../activate`). Needs `catalog_read`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "master",
+            "in": "path",
+            "required": true,
+            "description": "A master id, percent-encoded: a model card's id (`anthropic%2Fclaude-sonnet-4-6`) or an organization record's (`org%2Fqwen-local`).",
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "operations",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated: `chat` (the default), `embeddings`, `chat_batch`, `embeddings_batch`. Streaming takes the chat route.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tools",
+            "in": "query",
+            "required": false,
+            "description": "Whether the route must take tools (chat operations only).",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "alias",
+            "in": "query",
+            "required": false,
+            "description": "The alias; the master id's model part by default (`claude-sonnet-4-6`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The proposal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteProposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_master`, `invalid_operation`, `invalid_alias` or `invalid_query`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_read`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found` (no such master) or `no_active_release`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/v1/organizations/{org}/catalog/model-master-links/{family}/{model}": {
+      "get": {
+        "operationId": "getModelMasterLink",
+        "summary": "The organization's link for a model",
+        "description": "Needs `catalog_read`. The `ETag` is the link's version. A cleared link is returned too (`cleared`), so its version is the one to set it again at; one never set is `404 not_found`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "family",
+            "in": "path",
+            "required": true,
+            "description": "The deployment's provider family (`bedrock`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "The catalog model identifier, exactly as deployments name it, percent-encoded (`us.anthropic.claude-sonnet-4-6`, `us.amazon.nova-2-lite-v1%3A0`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The link, in use or cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MasterLink"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_family` or `invalid_model`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_read`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no link is set.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setModelMasterLink",
+        "summary": "Link a model to a master",
+        "description": "Links the provider family's model identifier to a master (a card's id or `org/<slug>`), or to none (`null`), which detaches a deployment a card would match. A link is per organization, family and model, not per release. The active release must serve the model on the family, and in the master's modality: a chat deployment is never linked to an embedding model's record. Links are catalog metadata: they change no route, price or configuration version. Needs `catalog_write`, `Idempotency-Key` and `If-Match`; audited as `model_master_link.set`. A cleared link is set again at its version (`If-Match: \"v<version>\"`, from `GET` or the list's `links`), not `\"v0\"`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "family",
+            "in": "path",
+            "required": true,
+            "description": "The deployment's provider family (`bedrock`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "The catalog model identifier, exactly as deployments name it, percent-encoded (`us.anthropic.claude-sonnet-4-6`, `us.amazon.nova-2-lite-v1%3A0`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`\"v0\"` when the resource is new, its current version (`\"v3\"`) after, or `*` for any state.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "master"
+                ],
+                "properties": {
+                  "master": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 255,
+                    "description": "A card's id or `org/<slug>`; `null` links to none."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Changed (or replayed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MasterLink"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Set where none was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MasterLink"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_family`, `invalid_model`, `invalid_master`, a missing `Idempotency-Key`, or an invalid `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_write`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`deployment_not_found`: the active release serves no such model on the family.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`unknown_master` or `modality_mismatch`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "`if_match_required`: no `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "clearModelMasterLink",
+        "summary": "Clear a model's link",
+        "description": "Clears the link (soft: every earlier state is kept), so the card that matches decides again. Needs `catalog_write`, `Idempotency-Key` and `If-Match`; audited as `model_master_link.clear`.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "Organization id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "family",
+            "in": "path",
+            "required": true,
+            "description": "The deployment's provider family (`bedrock`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "description": "The catalog model identifier, exactly as deployments name it, percent-encoded (`us.anthropic.claude-sonnet-4-6`, `us.amazon.nova-2-lite-v1%3A0`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "`\"v0\"` when the resource is new, its current version (`\"v3\"`) after, or `*` for any state.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Cleared."
+          },
+          "400": {
+            "description": "`invalid_family`, `invalid_model`, a missing `Idempotency-Key`, or an invalid `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `catalog_write`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no link is set.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`, `idempotency_conflict` or `idempotency_in_progress`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "`if_match_required`: no `If-Match`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`authentication_required`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` or `authentication_unavailable`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-gateway_session",
+        "description": "Paired with the `__Host-gateway_oidc_browser` binding cookie."
+      },
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gwa_…",
+        "description": "An agent token (`Authorization: Bearer gwa_…`), for automation: it acts as its agent, only in the agent's organization, with the agent's role. Created with `POST /api/admin/v1/organizations/{org}/agents/{agent_id}/tokens` or, on the server, `gateway agent create`."
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "Confidence": {
+        "type": "string",
+        "enum": [
+          "exact",
+          "estimated",
+          "unknown"
+        ]
+      },
+      "TokenTotals": {
+        "type": "object",
+        "required": [
+          "input",
+          "output",
+          "cached_input",
+          "reasoning",
+          "other"
+        ],
+        "description": "Sums of reported counters; unreported counters contribute nothing (see `incomplete_request_count`).",
+        "properties": {
+          "input": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "output": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cached_input": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reasoning": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "other": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "UsageAggregate": {
+        "type": "object",
+        "required": [
+          "currency",
+          "confidence",
+          "request_count",
+          "amount_minor",
+          "unpriced_request_count",
+          "incomplete_request_count",
+          "tokens"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/Confidence"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sum of amounts in money units of `currency` (10⁻⁶ of its smallest unit), over priced requests only."
+          },
+          "unpriced_request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "incomplete_request_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Requests whose usage was partial or unavailable."
+          },
+          "tokens": {
+            "$ref": "#/components/schemas/TokenTotals"
+          }
+        }
+      },
+      "ModelCard": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "model",
+          "generated_at",
+          "release_id",
+          "overview",
+          "public_card",
+          "deployments",
+          "omitted",
+          "organization_note",
+          "organization_evaluations"
+        ],
+        "properties": {
+          "schema": {
+            "const": "qucelerate.model-card.v1"
+          },
+          "model": {
+            "type": "string",
+            "description": "The catalog model identifier the card describes."
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "release_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The active release the catalog sections are read from."
+          },
+          "overview": {
+            "$ref": "#/components/schemas/CardOverview"
+          },
+          "public_card": {
+            "$ref": "#/components/schemas/PublicCard"
+          },
+          "deployments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardDeployment"
+            },
+            "description": "*In this organization*: each deployment of the active release that serves the model, by name."
+          },
+          "usage": {
+            "$ref": "#/components/schemas/CardUsage"
+          },
+          "governance": {
+            "$ref": "#/components/schemas/CardGovernance"
+          },
+          "omitted": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OmittedSection"
+            },
+            "description": "Sections left out because the caller's role cannot read them."
+          },
+          "gateway_data_handling": {
+            "$ref": "#/components/schemas/GatewayDataHandling"
+          },
+          "organization_note": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CardNote"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The organization's own note on the model (Governance), shown to every role that reads the catalog. `null` when none was ever set (write the first with `If-Match: \"v0\"`); a cleared note has an empty `note` and keeps its `version`, the `If-Match` for setting it again."
+          },
+          "organization_evaluations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationEvaluation"
+            },
+            "description": "Each of the organization's evaluation sets that scored the model, newest first."
+          }
+        },
+        "description": "One model's card. `usage` is present only with `usage_read`, `governance` only with `audit_read`; each absent section is listed in `omitted`. `gateway_data_handling` is present only with `tracing_read`."
+      },
+      "CardOverview": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "display_name",
+          "provider_families",
+          "operations",
+          "locations",
+          "max_input_bytes",
+          "max_output_tokens"
+        ],
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name a provider listing gives the model."
+          },
+          "provider_families": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "max_input_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The largest request any deployment accepts."
+          },
+          "max_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The most output tokens any deployment allows."
+          }
+        }
+      },
+      "PublicCard": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "data_handling"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "on_file",
+              "not_on_file"
+            ],
+            "description": "`on_file`: a card file matches one of the model's deployments. `not_on_file`: none does."
+          },
+          "card": {
+            "$ref": "#/components/schemas/PublicCardFile"
+          },
+          "data_handling": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicDataHandling"
+            },
+            "description": "The data-handling terms of each provider family serving the model that has a file, by family. Present whether or not a card is on file."
+          }
+        }
+      },
+      "CardDeployment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "deployment",
+          "adapter_instance_key",
+          "provider_family",
+          "location",
+          "routes",
+          "operations",
+          "availability",
+          "provider_listing"
+        ],
+        "properties": {
+          "deployment": {
+            "type": "string"
+          },
+          "adapter_instance_key": {
+            "type": "string"
+          },
+          "provider_family": {
+            "type": "string"
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardRoute"
+            },
+            "description": "Aliases routed to the deployment."
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardOperation"
+            }
+          },
+          "availability": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CardAvailability"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest availability evidence for the model on this account (`null`: none yet)."
+          },
+          "provider_listing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CardListing"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the provider's own listing says of the deployment, with its retirement date; `null` for listings of models (Bedrock, Gemini), which say none of this."
+          }
+        }
+      },
+      "CardRoute": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "alias",
+          "operation"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          }
+        }
+      },
+      "CardOperation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation",
+          "max_input_bytes",
+          "max_output_tokens",
+          "tools",
+          "price"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string"
+          },
+          "max_input_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "tools": {
+            "type": "boolean",
+            "description": "Whether it takes function tools (D-032)."
+          },
+          "price": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CardPrice"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The price billed now; `null` when the release prices no such operation, so no route can use it."
+          }
+        }
+      },
+      "CardPrice": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "currency",
+          "input_minor_per_token",
+          "output_minor_per_token",
+          "cached_input_minor_per_token",
+          "reasoning_minor_per_token",
+          "other_minor_per_token",
+          "billed_by",
+          "source",
+          "source_version",
+          "confidence"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "input_minor_per_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Money units per token (10⁻⁶ of the currency's smallest unit)."
+          },
+          "output_minor_per_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Money units per token (10⁻⁶ of the currency's smallest unit)."
+          },
+          "cached_input_minor_per_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Money units per token (10⁻⁶ of the currency's smallest unit)."
+          },
+          "reasoning_minor_per_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Money units per token (10⁻⁶ of the currency's smallest unit)."
+          },
+          "other_minor_per_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Money units per token (10⁻⁶ of the currency's smallest unit)."
+          },
+          "billed_by": {
+            "type": "string",
+            "enum": [
+              "release",
+              "override"
+            ],
+            "description": "Whether the release's price or an effective price override is billed now."
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The release price's source; `null` for an override."
+          },
+          "source_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The release price's source version, or the override's version."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "known",
+              "conservative"
+            ]
+          }
+        }
+      },
+      "CardAvailability": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "reason",
+          "source",
+          "observed_at",
+          "verified_at"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "entitled",
+              "refused",
+              "requires_action"
+            ],
+            "description": "As the Models page's availability (D-018)."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is refused or needs action (`access_denied`, `not_found`, `permission_missing`, …)."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "traffic",
+              "probe",
+              "control_plane"
+            ]
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "verified_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "CardUsage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "windows",
+          "requests"
+        ],
+        "properties": {
+          "windows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageWindow"
+            },
+            "description": "7, 30 and 90 days ending now."
+          },
+          "requests": {
+            "$ref": "#/components/schemas/RequestStats"
+          }
+        }
+      },
+      "UsageWindow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "days",
+          "from",
+          "to",
+          "totals"
+        ],
+        "properties": {
+          "days": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageAggregate"
+            },
+            "description": "Per currency and confidence, exactly as `GET /usage` reports totals for `model={model}` over the same window and teams."
+          }
+        }
+      },
+      "RequestStats": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "days",
+          "from",
+          "to",
+          "request_count",
+          "failed_count",
+          "errors",
+          "timed_since",
+          "timed_request_count",
+          "latency_p50_ms",
+          "latency_p95_ms",
+          "first_event_p50_ms",
+          "first_event_p95_ms",
+          "finish_reasons"
+        ],
+        "properties": {
+          "days": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failed_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Requests the provider refused or failed."
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountBy"
+            },
+            "description": "Failed requests by provider error category, most first."
+          },
+          "timed_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The first request in the window with timings and finish reasons; requests before the gateway recorded them have none."
+          },
+          "timed_request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "latency_p50_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "latency_p95_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "first_event_p50_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Streams: time to the first content event."
+          },
+          "first_event_p95_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "finish_reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinishReasonCount"
+            }
+          }
+        },
+        "description": "How the model's requests went over 30 days ending now, under the same team clamp as usage. Latency is from sending the request to the provider to its last event."
+      },
+      "CountBy": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "count"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "FinishReasonCount": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reason",
+          "count",
+          "safety"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "The first choice's finish reason, lowercase; `other` for anything but a short code."
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "safety": {
+            "type": "boolean",
+            "description": "A safety system stopped or refused the response (`content_filter`, `refusal`, `safety`, …)."
+          }
+        }
+      },
+      "CardGovernance": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "first_release",
+          "history",
+          "truncated"
+        ],
+        "properties": {
+          "first_release": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GovernanceEntry"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The activation that first served the model; `null` when that is not known: a release older than the oldest activation read (the latest 500) had a deployment of the model."
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GovernanceEntry"
+            },
+            "description": "Activations that added, removed or changed the model's deployments (account, provider family, location, operations, limits or prices), newest first, at most 25."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Older changes may exist than those listed: more than 25, or a release older than the oldest activation read had a deployment of the model (activations past the 500 read, removed by audit retention, or made without an audit event)."
+          }
+        }
+      },
+      "GovernanceEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "release_id",
+          "release_version",
+          "created_at",
+          "actor",
+          "added",
+          "removed",
+          "changed"
+        ],
+        "properties": {
+          "release_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "release_version": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the release was activated."
+          },
+          "actor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GovernanceActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Deployments whose operations, limits or prices changed."
+          }
+        }
+      },
+      "GovernanceActor": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "actor_type",
+          "id",
+          "name"
+        ],
+        "properties": {
+          "actor_type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "service_account",
+              "system"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "OmittedSection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "section",
+          "requires"
+        ],
+        "properties": {
+          "section": {
+            "type": "string",
+            "enum": [
+              "usage",
+              "governance",
+              "gateway_data_handling"
+            ]
+          },
+          "requires": {
+            "type": "string",
+            "enum": [
+              "usage_read",
+              "audit_read",
+              "tracing_read"
+            ]
+          }
+        }
+      },
+      "ReportedBy": {
+        "type": "string",
+        "enum": [
+          "provider",
+          "independent"
+        ],
+        "description": "`provider`: the model's provider about its own model (self-reported). `independent`: anyone else, such as an evaluator or a hub computing it from the weights."
+      },
+      "FileOrigin": {
+        "type": "string",
+        "enum": [
+          "builtin",
+          "operator",
+          "imported"
+        ],
+        "description": "`builtin`: shipped with the gateway. `operator`: from the operator's `GATEWAY_MODEL_CARDS_DIR`, which adds files and replaces shipped ones by card id or provider family. `imported`: the organization imported it from a Hugging Face Hub model card; shown only when no file matches the model."
+      },
+      "Fact": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value",
+          "source_url",
+          "retrieved_at",
+          "reported_by"
+        ],
+        "description": "One public fact as its source states it.",
+        "properties": {
+          "value": {
+            "description": "A string, number, boolean or list of strings, as the fact's key implies.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Where it was read (https)."
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date",
+            "description": "When it was read."
+          },
+          "reported_by": {
+            "$ref": "#/components/schemas/ReportedBy"
+          },
+          "title": {
+            "type": "string",
+            "description": "The source's title, for a link."
+          }
+        }
+      },
+      "CardOverviewFacts": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Overview facts the card gives; any may be absent.",
+        "properties": {
+          "release_date": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "family": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "modalities_in": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "modalities_out": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "context_window_tokens": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "max_output_tokens": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "knowledge_cutoff": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "license": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "open_weight": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "retirement": {
+            "$ref": "#/components/schemas/Fact"
+          }
+        }
+      },
+      "CardSafetyFacts": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Safety facts the card gives; any may be absent.",
+        "properties": {
+          "model_card_url": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "safety_evaluations_url": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "acceptable_use_url": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "intended_uses": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "prohibited_uses": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "known_limitations": {
+            "$ref": "#/components/schemas/Fact"
+          }
+        }
+      },
+      "DataHandlingFacts": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Data-handling facts the file gives; any may be absent.",
+        "properties": {
+          "training_use": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "shared_with_model_provider": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "provider_access": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "abuse_monitoring": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "zero_data_retention": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "residency": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "encryption": {
+            "$ref": "#/components/schemas/Fact"
+          },
+          "terms_url": {
+            "$ref": "#/components/schemas/Fact"
+          }
+        }
+      },
+      "Evaluation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "score",
+          "evaluator",
+          "source_url",
+          "retrieved_at",
+          "reported_by"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "score": {
+            "description": "As published: a number or a string such as `85.2%`.",
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "setting": {
+            "type": "string",
+            "description": "Shots, tools, thinking budget and the like."
+          },
+          "evaluator": {
+            "type": "string",
+            "description": "Who ran it."
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date"
+          },
+          "reported_by": {
+            "$ref": "#/components/schemas/ReportedBy"
+          }
+        }
+      },
+      "PublicCardFile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "vendor",
+          "origin",
+          "matched_deployments",
+          "overview",
+          "evaluations",
+          "safety"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`<vendor>/<model>`."
+          },
+          "name": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/FileOrigin"
+          },
+          "matched_deployments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The deployments whose provider family and model identifier the card lists exactly. When deployments match different cards, the card matching most of them is shown."
+          },
+          "overview": {
+            "$ref": "#/components/schemas/CardOverviewFacts"
+          },
+          "evaluations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evaluation"
+            }
+          },
+          "safety": {
+            "$ref": "#/components/schemas/CardSafetyFacts"
+          }
+        }
+      },
+      "PublicDataHandling": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "deployments",
+          "facts",
+          "name",
+          "origin",
+          "provider_family"
+        ],
+        "properties": {
+          "provider_family": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/FileOrigin"
+          },
+          "applies_to": {
+            "type": "string",
+            "description": "Which of the family's models the terms cover, when not all."
+          },
+          "facts": {
+            "$ref": "#/components/schemas/DataHandlingFacts"
+          },
+          "service": {
+            "type": "string",
+            "description": "The family's service the terms cover (`gemini-api`, `agent-platform`; a Foundry model format such as `anthropic`); absent for the family's default terms."
+          },
+          "deployments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The deployments serving the model that these terms cover. A deployment whose service the gateway cannot tell is listed under each of its family's terms."
+          }
+        }
+      },
+      "GatewayDataHandling": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "trace_mode",
+          "trace_content",
+          "trace_content_retention_days"
+        ],
+        "description": "What the gateway itself keeps of this organization's requests: its trace policy.",
+        "properties": {
+          "trace_mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "organization",
+              "selected"
+            ]
+          },
+          "trace_content": {
+            "type": "boolean",
+            "description": "Traced requests keep their content (when tracing is on)."
+          },
+          "trace_content_retention_days": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "CardListing": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "format",
+          "model",
+          "version",
+          "sku",
+          "lifecycle_status",
+          "retires_at",
+          "listed_at",
+          "content_filter",
+          "content_filter_policy"
+        ],
+        "description": "What the provider's listing of the account's own deployments says of this one (Azure).",
+        "properties": {
+          "format": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model format (`OpenAI`, `Anthropic`, `xAI`, ...)."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model the deployment serves."
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The deployment type (`GlobalStandard`, `DataZoneBatch`, ...)."
+          },
+          "lifecycle_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model version's lifecycle status in the account's model catalog."
+          },
+          "retires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When inference on that model version retires, per the account's model catalog."
+          },
+          "listed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "content_filter": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The content filter policy the deployment applies, as the cloud reports it (Azure's `raiPolicyName`)."
+          },
+          "content_filter_policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ContentFilterPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "CardNote": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "note",
+          "version",
+          "updated_at",
+          "updated_by"
+        ],
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GovernanceActor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who last set it; `null` once that account is gone."
+          }
+        }
+      },
+      "CardRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "vendor",
+          "origin"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/FileOrigin"
+          }
+        }
+      },
+      "ModelCardSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "provider_families",
+          "card",
+          "context_window_tokens",
+          "max_output_tokens",
+          "retirement",
+          "retires_at"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "provider_families": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "card": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CardRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The matching card file; `null`: no public card on file."
+          },
+          "context_window_tokens": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Fact"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_output_tokens": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Fact"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retirement": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Fact"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider's published retirement commitment, from the card file."
+          },
+          "retires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The earliest date a provider listing says inference on one of the model's deployments retires (Azure's model catalog)."
+          }
+        }
+      },
+      "ModelCardSummaryList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "release_id",
+          "items"
+        ],
+        "properties": {
+          "release_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelCardSummary"
+            }
+          }
+        }
+      },
+      "ContentFilterRule": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "What it filters (`Hate`, `Sexual`, `Violence`, `Selfharm`, `Jailbreak`, ...)."
+          },
+          "source": {
+            "type": "string",
+            "description": "`Prompt` or `Completion`."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "severity_threshold": {
+            "type": "string",
+            "description": "The lowest severity filtered (`Low`, `Medium`, `High`)."
+          }
+        }
+      },
+      "ContentFilterPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "filters"
+        ],
+        "description": "A content filter policy as the cloud reports it (Azure's `raiPolicies`).",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "base_policy": {
+            "type": "string",
+            "description": "The policy it is based on (`Microsoft.DefaultV2`)."
+          },
+          "mode": {
+            "type": "string",
+            "description": "How it filters streams (`Default`, `Asynchronous_filter`, ...)."
+          },
+          "system_policy": {
+            "type": "boolean",
+            "description": "Whether the cloud reports it as its own default policy (`SystemManaged`) rather than one the account made."
+          },
+          "filters": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/components/schemas/ContentFilterRule"
+            }
+          }
+        }
+      },
+      "ImportedCardFile": {
+        "type": "object",
+        "description": "A `qucelerate.model-card.v1` document made from the Hub's structured metadata: the license, the parameter count the Hub computes (always `independent`), the `model-index` evaluation results (at most 50) and a link to the repository's page. Free-text sections are not imported.",
+        "required": [
+          "schema",
+          "id",
+          "name",
+          "vendor",
+          "matches",
+          "overview",
+          "evaluations",
+          "safety"
+        ],
+        "properties": {
+          "schema": {
+            "const": "qucelerate.model-card.v1"
+          },
+          "id": {
+            "type": "string",
+            "description": "`huggingface/<owner>--<name>`."
+          },
+          "name": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          },
+          "matches": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "overview": {
+            "$ref": "#/components/schemas/CardOverviewFacts"
+          },
+          "evaluations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evaluation"
+            }
+          },
+          "safety": {
+            "$ref": "#/components/schemas/CardSafetyFacts"
+          }
+        }
+      },
+      "CardImport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "repository",
+          "provider_repository",
+          "card",
+          "version",
+          "imported_at",
+          "imported_by"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string",
+            "description": "The Hub repository, `owner/name`."
+          },
+          "provider_repository": {
+            "type": "boolean",
+            "description": "Whether the importer stated the repository is the model provider's own, so its facts are `provider` (self-reported) rather than `independent`."
+          },
+          "card": {
+            "$ref": "#/components/schemas/ImportedCardFile"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "imported_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "imported_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GovernanceActor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who imported it; `null` once that account is gone."
+          }
+        }
+      },
+      "OrganizationEvaluation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "set_id",
+          "set_name",
+          "run_id",
+          "batch_id",
+          "scored_at",
+          "items",
+          "answered",
+          "correct"
+        ],
+        "description": "The model's score in the latest run of one of the organization's evaluation sets: the organization's own, not a benchmark.",
+        "properties": {
+          "set_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "set_name": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "batch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scored_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Batch lines that asked an item of the set on this model."
+          },
+          "answered": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Of those, the ones with an answer; the rest failed or expired."
+          },
+          "correct": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Answers matching the expected answer."
+          }
+        }
+      },
+      "EvaluationItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "expected",
+          "match"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,64}$",
+            "description": "Unique in the set; a batch line's `custom_id` names it before its first `:`."
+          },
+          "expected": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "contains"
+            ],
+            "description": "After trimming, lowercasing and collapsing whitespace in both: `exact`, the whole answer is the expected one; `contains`, the answer contains it."
+          }
+        }
+      },
+      "EvaluationSet": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "items",
+          "created_at",
+          "created_by",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvaluationItem"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GovernanceActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The set's admin resource version, as its `ETag` gives it."
+          }
+        }
+      },
+      "ModelScore": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "items",
+          "answered",
+          "correct"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "The catalog model the lines ran on."
+          },
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "answered": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "correct": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "EvaluationRun": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "set_id",
+          "batch_id",
+          "created_at",
+          "created_by",
+          "unmatched_lines",
+          "results"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "set_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "batch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GovernanceActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unmatched_lines": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Output lines whose custom_id named no item of the set."
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelScore"
+            }
+          }
+        }
+      },
+      "Modality": {
+        "type": "string",
+        "enum": [
+          "chat",
+          "embeddings"
+        ],
+        "description": "What a model does. A deployment links only to a master of a modality one of its operations serves."
+      },
+      "ResolvedBy": {
+        "type": "string",
+        "enum": [
+          "link",
+          "card",
+          "none"
+        ],
+        "description": "How a deployment's master was decided: the organization's link (which may be to none), else the card whose `matches` lists the deployment's family and model exactly, else none."
+      },
+      "MasterLinkRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "master",
+          "version",
+          "cleared"
+        ],
+        "properties": {
+          "master": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The master the link names; `null` links to none (or, cleared, to nothing)."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "cleared": {
+            "type": "boolean",
+            "description": "Cleared: no link is in use and the card decides; `version` is the one to set it again at (`If-Match: \"v<version>\"`)."
+          }
+        }
+      },
+      "MasterDeployment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "deployment",
+          "model",
+          "provider_family",
+          "adapter_instance_key",
+          "location",
+          "master",
+          "resolved_by",
+          "card",
+          "link",
+          "operations",
+          "availability",
+          "routes"
+        ],
+        "properties": {
+          "deployment": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "description": "The catalog model identifier."
+          },
+          "provider_family": {
+            "type": "string"
+          },
+          "adapter_instance_key": {
+            "type": "string",
+            "description": "The provider account."
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "master": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its master; `null` for none."
+          },
+          "resolved_by": {
+            "$ref": "#/components/schemas/ResolvedBy"
+          },
+          "card": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The card that lists its family and model, whether or not a link overrides it."
+          },
+          "link": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MasterLinkRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardOperation"
+            },
+            "description": "Each operation with its limits, whether it takes tools, and the price billed now."
+          },
+          "availability": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CardAvailability"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardRoute"
+            },
+            "description": "The aliases that route to it, per operation."
+          }
+        },
+        "description": "A deployment of the active release and its master."
+      },
+      "MasterRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "vendor",
+          "origin",
+          "modality",
+          "version",
+          "deployments",
+          "suggestions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "A card's id (`anthropic/claude-sonnet-4-6`) or `org/<slug>`."
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "card",
+              "organization"
+            ]
+          },
+          "vendor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The card's vendor; `null` for an organization record."
+          },
+          "origin": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FileOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "modality": {
+            "$ref": "#/components/schemas/Modality"
+          },
+          "version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "An organization record's version (its `ETag`); `null` for a card."
+          },
+          "deployments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MasterDeployment"
+            },
+            "description": "Its linked deployments in the active release."
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RouteSuggestion"
+            },
+            "description": "Linked, priced deployments the master's own aliases leave out, by alias, operation and deployment. An alias routing one deployment under another name than the default is that deployment's, and gets none."
+          }
+        },
+        "description": "A master model record: one model, whoever serves it (D-033)."
+      },
+      "MasterLink": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provider_family",
+          "model",
+          "master",
+          "version",
+          "updated_at",
+          "updated_by",
+          "cleared"
+        ],
+        "properties": {
+          "provider_family": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "master": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The master it links to; `null` links to none, detaching a deployment a card would match."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GovernanceActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cleared": {
+            "type": "boolean",
+            "description": "Cleared (`DELETE`): no link is in use, so the card that lists the model decides, and `master` is `null`. It is kept; set it again with `If-Match: \"v<version>\"`."
+          }
+        },
+        "description": "The organization's link for one provider family and model identifier. It holds whatever release is active."
+      },
+      "OrganizationMaster": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "modality",
+          "version",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "deleted"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`org/<slug>`."
+          },
+          "name": {
+            "type": "string"
+          },
+          "modality": {
+            "$ref": "#/components/schemas/Modality"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GovernanceActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "Deleted (kept). Only `deleted_records` in the list holds deleted records; create one again with `If-Match: \"v<version>\"`."
+          }
+        },
+        "description": "One of the organization's own master records."
+      },
+      "MasterList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "release_id",
+          "items",
+          "unlinked",
+          "links",
+          "deleted_records"
+        ],
+        "properties": {
+          "release_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The active release; `null` when the organization has none."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MasterRecord"
+            },
+            "description": "Every card and organization record, by id, each with its linked deployments."
+          },
+          "unlinked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MasterDeployment"
+            },
+            "description": "Deployments of the active release with no master, or linked to one that no longer exists."
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MasterLink"
+            },
+            "description": "Every link the organization has set, whether the active release serves its model or not; cleared ones too (`cleared`), with the version to set each again at."
+          },
+          "deleted_records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationMaster"
+            },
+            "description": "The organization's deleted records (`deleted`), each with the version to create it again at."
+          }
+        }
+      },
+      "ProposedRoute": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation",
+          "deployment",
+          "weight",
+          "priority"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string"
+          },
+          "deployment": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        }
+      },
+      "RouteExclusion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation",
+          "deployment",
+          "reason",
+          "detail"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string"
+          },
+          "deployment": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no_price",
+              "provider_not_permitted",
+              "location_not_permitted",
+              "availability_refused",
+              "availability_requires_action",
+              "no_tools",
+              "mixed_tool_call_ids",
+              "currency",
+              "too_many_deployments"
+            ],
+            "description": "`no_price`: the release prices no such operation on it. `provider_not_permitted`, `location_not_permitted`: the routing policy does not permit its family or location (or it has no location while locations are restricted). `availability_refused`, `availability_requires_action`: its availability evidence. `no_tools`: tools were asked for and it is not set to take them. `mixed_tool_call_ids`: tools were asked for and its tool call ids differ from the route's (Gemini's, or an Agent Platform endpoint's, with others). `currency`: priced in another currency than the route (the one most deployments are priced in). `too_many_deployments`: the route already has 8."
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "description": "A linked deployment a proposal leaves out of one operation's route, and why."
+      },
+      "RouteWeight": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "weight",
+          "priority"
+        ],
+        "properties": {
+          "weight": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "RouteChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation",
+          "deployment",
+          "change",
+          "before",
+          "after"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string"
+          },
+          "deployment": {
+            "type": "string"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "changed",
+              "unchanged"
+            ]
+          },
+          "before": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RouteWeight"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RouteWeight"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RouteProposal": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "master",
+          "release_id",
+          "alias",
+          "alias_exists",
+          "operations",
+          "tools",
+          "routes",
+          "excluded",
+          "existing",
+          "changes",
+          "problem"
+        ],
+        "properties": {
+          "master": {
+            "type": "string"
+          },
+          "release_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The active release it was computed against."
+          },
+          "alias": {
+            "type": "string"
+          },
+          "alias_exists": {
+            "type": "boolean",
+            "description": "Whether the active release routes the alias already, for any operation."
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tools": {
+            "type": "boolean"
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedRoute"
+            },
+            "description": "Every linked deployment that serves each operation and is usable, at weight 1 and priority 1."
+          },
+          "excluded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RouteExclusion"
+            }
+          },
+          "existing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedRoute"
+            },
+            "description": "The alias's routes of these operations in the active release."
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RouteChange"
+            },
+            "description": "The proposal compared with `existing`, by operation and deployment."
+          },
+          "problem": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the active release with the alias's routes of these operations replaced by `routes` would be refused; `null` when it would publish."
+          }
+        },
+        "description": "A proposed route for one master's model across providers. Nothing changes until an admin publishes a release with it and activates that release."
+      },
+      "RouteSuggestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "alias",
+          "operation",
+          "deployment"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string",
+            "description": "`chat`, `embeddings`, `chat_batch` or `embeddings_batch` (a `chat_stream` route of an older release is chat)."
+          },
+          "deployment": {
+            "type": "string",
+            "description": "A linked deployment of the master, priced for the operation, that the alias does not route to."
+          }
+        },
+        "description": "A suggestion, computed from the active release and never applied on its own: one of the master's aliases (one routing two or more of its deployments for the operation, or its default alias, the card's model part) does not route this deployment. Adding it changes the alias's price ceiling, limits and locations, so it takes a release (*Route across providers*)."
+      }
+    }
+  }
+}

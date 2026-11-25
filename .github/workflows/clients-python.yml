@@ -1,0 +1,56 @@
+name: Python client
+
+on:
+  push:
+    # main only: a pull request runs this for its branch.
+    branches: [main]
+    paths:
+      - "clients/python/**"
+      - "clients/conformance/**"
+      - ".github/workflows/clients-python.yml"
+  pull_request:
+    paths:
+      - "clients/python/**"
+      - "clients/conformance/**"
+      - ".github/workflows/clients-python.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-python-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: clients/python
+
+jobs:
+  test:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported version and a current one.
+        python: ["3.9", "3.13"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install the client and its test dependencies
+        run: python -m pip install -e ".[test]"
+
+      # tests/test_conformance.py runs every case of clients/conformance
+      # against Client and AsyncClient.
+      - name: Run tests, including the conformance suite
+        run: python -m pytest -q
+
+      - name: Build the package
+        run: |
+          python -m pip install build
+          python -m build

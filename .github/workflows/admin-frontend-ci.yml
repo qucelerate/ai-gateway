@@ -1,0 +1,57 @@
+name: Admin frontend CI
+
+on:
+  push:
+    # main and release tags: a pull request runs this for its branch, and
+    # container-images.yml publishes a v* tag only after this passes on it.
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "apps/admin/**"
+      - ".github/workflows/admin-frontend-ci.yml"
+  # By hand, on main or a release tag: when GitHub loses a push's runs
+  # (an incident can leave them queued for good), run each again here.
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/admin/**"
+      - ".github/workflows/admin-frontend-ci.yml"
+
+permissions:
+  contents: read
+
+# A newer push cancels a branch's runs, but not main's: image publishing
+# waits for main's checks, so each must finish.
+concurrency:
+  group: admin-frontend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    working-directory: apps/admin
+
+jobs:
+  test-and-build:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
+
+      - name: Install dependencies
+        # Carbon packages run IBM usage telemetry on install; keep it off.
+        env:
+          IBM_TELEMETRY_DISABLED: 'true'
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build application
+        run: npm run build

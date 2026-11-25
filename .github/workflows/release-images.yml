@@ -1,0 +1,314 @@
+name: Release images and chart
+
+# Publishes a gateway release from the public repository, qucelerate/ai-gateway,
+# when its tag (v<version>, for example v1.2.0) is pushed:
+#   ghcr.io/qucelerate/ai-gateway        the gateway (Dockerfile)
+#   ghcr.io/qucelerate/ai-gateway-admin  the admin UI (docker/admin/Dockerfile)
+#   ghcr.io/qucelerate/ai-gateway-docs   the documentation site (docker/docs)
+# each tagged X.Y.Z, and for a full release also X.Y and latest, with an SBOM
+# and SLSA provenance, and signed with cosign, keyless (the signature names
+# this workflow and the tag; no key is kept). Then the Helm chart
+# (deploy/helm/ai-gateway), version and appVersion X.Y.Z, goes to
+# oci://ghcr.io/qucelerate/charts/ai-gateway, signed the same way.
+#
+# The same workflow files run in the private development repository, which
+# publishes its own dev images (container-images.yml); there every job here
+# is skipped. Everything runs on GitHub's hosted runners.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/qucelerate
+
+jobs:
+  version:
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tags: ${{ steps.version.outputs.tags }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # X.Y.Z always; X.Y and latest only for a full release, not a
+      # pre-release (X.Y.Z-rc.1).
+      - name: Read the version from the tag
+        id: version
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?$ ]] ||
+            { echo "::error::$GITHUB_REF_NAME is not a release tag (v<major>.<minor>.<patch>[-pre])"; exit 1; }
+          version="${GITHUB_REF_NAME#v}"
+          tags="$version"
+          if [ -z "${BASH_REMATCH[4]}" ]; then
+            tags="$tags ${BASH_REMATCH[1]}.${BASH_REMATCH[2]} latest"
+          fi
+          echo "version=$version" | tee -a "$GITHUB_OUTPUT"
+          echo "tags=$tags" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Check the tagged commit is on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main ||
+            { echo "$GITHUB_REF_NAME tags $GITHUB_SHA, which is not on main" >&2; exit 1; }
+
+  # The documentation site, built without any write permission or OIDC
+  # token: its npm install runs third-party code, which must not reach the
+  # registry token or a signing identity. The images job takes the result.
+  docs-site:
+    needs: version
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # The site's "Last updated" dates come from git history.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: apps/docs/package-lock.json
+
+      - name: Build the documentation site
+        working-directory: apps/docs
+        run: |
+          npm ci
+          npm run build
+
+      - name: Keep the site for the image
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docs-site
+          path: apps/docs/.vitepress/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  images:
+    needs: [version, docs-site]
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+      # Keyless signing: cosign exchanges the job's OIDC token for a
+      # short-lived Sigstore certificate.
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ai-gateway
+            dockerfile: Dockerfile
+            context: .
+            title: QuCelerate AI Gateway
+          - image: ai-gateway-admin
+            dockerfile: docker/admin/Dockerfile
+            context: .
+            title: QuCelerate AI Gateway admin UI
+          - image: ai-gateway-docs
+            dockerfile: docker/docs/Dockerfile
+            context: docker/docs
+            title: QuCelerate AI Gateway documentation
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TAGS: ${{ needs.version.outputs.tags }}
+      IMAGE: ghcr.io/qucelerate/${{ matrix.image }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      # The newest push run of each check for this commit must pass. A tag
+      # push always starts both (path filters don't apply to tags), so a run
+      # that never appears is an error, not a skip: wait up to 10 minutes
+      # for it to be created.
+      - name: Wait for the commit's checks
+        if: matrix.image != 'ai-gateway-docs'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -o pipefail
+          for workflow in "Rust CI" "Admin frontend CI"; do
+            waited=0
+            while :; do
+              run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100" \
+                --jq "[.workflow_runs[] | select(.name == \"${workflow}\" and (.event == \"push\" or .event == \"workflow_dispatch\"))] | sort_by(.created_at) | last")
+              if [ -z "$run" ] || [ "$run" = null ]; then
+                if [ "$waited" -ge 600 ]; then
+                  echo "::error::${workflow} has no run for ${SHA} after 10 minutes"
+                  exit 1
+                fi
+                sleep 30; waited=$((waited + 30))
+                continue
+              fi
+              if [ "$(jq -r .status <<<"$run")" = completed ]; then
+                conclusion=$(jq -r .conclusion <<<"$run")
+                if [ "$conclusion" = success ]; then
+                  echo "${workflow}: passed"
+                  break
+                fi
+                echo "::error::${workflow} ${conclusion} for ${SHA}: $(jq -r .html_url <<<"$run")"
+                exit 1
+              fi
+              sleep 30
+            done
+          done
+
+      # Built by the docs-site job and passed as the `site` build context.
+      - name: Take the documentation site
+        if: matrix.image == 'ai-gateway-docs'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: docs-site
+          path: apps/docs/.vitepress/dist
+
+      # ECR Public throttles GitHub's runners: use the GHCR copies of the
+      # base images the private repository keeps, where they can be read
+      # (lookup only; nothing is copied from here), else the ECR pins.
+      - name: Base images
+        id: base
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          MIRROR_LOOKUP_ONLY: "1"
+        run: |
+          scripts/mirror-base-images.sh "${REGISTRY}/mirror" > "$RUNNER_TEMP/mirror.env" || true
+          {
+            echo "build-args<<ARGS"
+            while IFS='=' read -r name value; do
+              if [ -n "$value" ] && grep -q "^ARG ${name}=" "$DOCKERFILE"; then
+                echo "${name}=${value}"
+              fi
+            done < "$RUNNER_TEMP/mirror.env"
+            echo "ARGS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Image tags
+        id: tags
+        run: |
+          {
+            echo "list<<TAGS"
+            for tag in $TAGS; do echo "${IMAGE}:${tag}"; done
+            echo "TAGS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Sign in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          build-contexts: ${{ matrix.image == 'ai-gateway-docs' && 'site=apps/docs/.vitepress/dist' || '' }}
+          push: true
+          build-args: ${{ steps.base.outputs.build-args }}
+          tags: ${{ steps.tags.outputs.list }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.title }}
+            org.opencontainers.image.vendor=QuCelerate
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.url=https://gateway.qucelerate.com
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      # By digest, so the signature covers exactly what was pushed, under
+      # every tag.
+      - name: Sign the image (keyless)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          echo "${IMAGE}@${DIGEST} (tags: ${TAGS})" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  chart:
+    needs: [version, images]
+    if: github.repository == 'qucelerate/ai-gateway'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Install Helm
+        uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: v4.3.2
+
+      - name: Lint and package the chart
+        run: |
+          helm lint deploy/helm/ai-gateway --set host=gateway.example.com
+          helm package deploy/helm/ai-gateway --version "$VERSION" --app-version "$VERSION" \
+            --destination "$RUNNER_TEMP/chart"
+
+      - name: Push the chart
+        id: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          echo "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          helm push "$RUNNER_TEMP/chart/ai-gateway-${VERSION}.tgz" "oci://${REGISTRY}/charts" 2>&1 | tee "$RUNNER_TEMP/push.log"
+          digest=$(grep -oE 'sha256:[0-9a-f]{64}' "$RUNNER_TEMP/push.log" | tail -1)
+          [ -n "$digest" ] || { echo "::error::helm push printed no digest"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      - name: Sign in to GHCR for cosign
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Sign the chart (keyless)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          cosign sign --yes "${REGISTRY}/charts/ai-gateway@${DIGEST}"
+          echo "oci://${REGISTRY}/charts/ai-gateway --version ${VERSION} (${DIGEST})" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,28 @@
+{
+  "schema": "qucelerate.data-handling.v1",
+  "provider_family": "azure-ai-foundry",
+  "service": "anthropic",
+  "name": "Claude models in Microsoft Foundry",
+  "applies_to": "Foundry deployments of Claude models (model format Anthropic), which are third-party Marketplace offerings from Anthropic.",
+  "facts": {
+    "provider_access": {
+      "value": "Anthropic is the seller and operator of Claude models in Microsoft Foundry and acts as an independent data processor for prompts and outputs; Anthropic's terms of use govern the use of the Claude models.",
+      "source_url": "https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/claude-models/data-privacy",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "residency": {
+      "value": "Hosted on Azure: prompts and outputs are processed on Azure infrastructure, including request ingress, API services, and GPU inference, and never leave Azure. Hosted on Anthropic infrastructure: data might be processed outside of Azure, including outside of your selected Azure geography.",
+      "source_url": "https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/claude-models/data-privacy",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider"
+    },
+    "terms_url": {
+      "value": "https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/claude-models/data-privacy",
+      "source_url": "https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/claude-models/data-privacy",
+      "retrieved_at": "2026-11-17",
+      "reported_by": "provider",
+      "title": "Data, privacy, and security for use of Anthropic Claude models in Microsoft Foundry"
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "name": "non_problem_error_response",
+  "description": "An error response that is not a Problem, such as a proxy's HTML page, surfaces as an HTTP error with its status.",
+  "operation": "chat",
+  "call": {
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    }
+  },
+  "expect_request": {
+    "method": "POST",
+    "path": "/api/inference/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer gw_conformance_key"
+    },
+    "body": {
+      "model": "chat-default",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello."
+        }
+      ]
+    },
+    "generated_idempotency_key": true
+  },
+  "responses": [
+    {
+      "status": 502,
+      "headers": {
+        "content-type": "text/html"
+      },
+      "text": "<html><body>Bad gateway</body></html>"
+    }
+  ],
+  "expect": {
+    "attempts": 1,
+    "sleeps": [],
+    "error": {
+      "kind": "http",
+      "status": 502
+    }
+  }
+}

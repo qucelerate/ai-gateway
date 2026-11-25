@@ -1,0 +1,6 @@
+# Owners GitHub asks to review changes to these paths: the documentation
+# release gate's owner review (the documentation release gate).
+/apps/docs/   @av-miller
+/docs/        @av-miller
+/SECURITY.md  @av-miller
+/.github/CODEOWNERS  @av-miller
